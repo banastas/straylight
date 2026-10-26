@@ -5,7 +5,7 @@
 | **Status** | Draft v0.1: not started |
 | **Owner** | Bill Anastas |
 | **Last updated** | 2026-10-25 |
-| **Repo** | banastas/straylight (not created yet) |
+| **Repo** | [banastas/straylight](https://github.com/banastas/straylight) |
 | **Site / updates** | https://straylight.banast.as |
 | **Siblings** | [flatline](https://github.com/banastas/flatline) (CPU, memory, network), freeside (drives) |
 
