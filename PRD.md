@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Status** | Draft v0.1: not started |
+| **Status** | Draft v0.2: not started |
 | **Owner** | Bill Anastas |
-| **Last updated** | 2026-10-25 |
+| **Last updated** | 2026-10-26 |
 | **Repo** | [banastas/straylight](https://github.com/banastas/straylight) |
 | **Site / updates** | https://straylight.banast.as |
 | **Siblings** | [flatline](https://github.com/banastas/flatline) (CPU, memory, network), freeside (drives) |
@@ -21,7 +21,7 @@ The name comes from Villa Straylight, the Tessier-Ashpool home at the end of Fre
 
 Speed tests measure throughput once. Most "the internet is bad" problems are latency spikes, jitter and loss that come and go. A speed test misses them, and video calls and remote sessions feel them straight away. `ping` in Terminal shows them, but you have to remember to run it, it watches one target, and it keeps no history. macOS's `networkQuality` is a one-off test that saturates the link. Tools like PingPlotter are large and paid.
 
-straylight is an always-on, two-target trace in the menu bar, with enough history to see what happened during the call you just had.
+straylight is an always-on trace to the router and the internet in the menu bar, with enough history to see what happened during the call you just had, or every evening this week.
 
 ## 3. Goals
 
@@ -55,13 +55,17 @@ straylight is an always-on, two-target trace in the menu bar, with enough histor
 | Target | Default | Tells you about |
 |---|---|---|
 | **Router** | The primary interface's default gateway, found automatically | Your Wi‑Fi or local network |
-| **Internet** | `1.1.1.1` | The path through your ISP to the internet |
+| **Internet** | Two hosts from different providers: `1.1.1.1` (primary) and `8.8.8.8` (secondary) | The path through your ISP to the internet |
 | Custom (optional, up to 2) | none | e.g. a company VPN endpoint or a game server |
 
 - **Gateway discovery**: SCDynamicStore `State:/Network/Global/IPv4` → `PrimaryInterface`, `Router` (and `State:/Network/Global/IPv6`). Watched with `SCDynamicStoreSetNotificationKeys`, so it updates on network changes without polling. `NWPathMonitor` supplies the interface type (Wi‑Fi, Ethernet, hotspot) and `isExpensive` / `isConstrained`.
+- **Two internet hosts**: the internet counts as OK when either host is OK, so one provider's bad day doesn't look like your ISP's. When one host is Bad and the other is OK, the internet card says so ("1.1.1.1 slow, 8.8.8.8 fine: likely Cloudflare, not your ISP"). The menu bar shows the primary host. The secondary host can be turned off in Settings.
+- **IPv4 and IPv6**: the router and the internet hosts are probed over IPv4 when the network has IPv4. On a dual-stack network, the primary internet host is also probed over IPv6 (`2606:4700:4700::1111` for 1.1.1.1, `2001:4860:4860::8888` for 8.8.8.8), shown as its own row in the internet card. The verdict uses IPv4; when IPv6 is Bad or Down and IPv4 is OK, the header adds "IPv6 problem". On an IPv6-only network, every target is probed over IPv6 and the router is the link-local `Router` from `State:/Network/Global/IPv6`, probed with the primary interface's scope ID.
 - **VPN**: when the primary interface is a `utun`, the router target uses the physical interface's router (`State:/Network/Interface/<en>/IPv4` → `Router`), and the popover labels the internet path "via VPN". If the VPN blocks local traffic, the router shows "unreachable (VPN)", not loss.
 - Hostnames are resolved once per network change, not once per probe.
-- A router that never answers ping in its first 10 probes is marked "doesn't answer ping" and its card is hidden, rather than shown as 100 % loss.
+- **Warm-up**: for the first 10 s after a network change, every target is probed once a second, whatever the power source, so baselines and the checks below settle quickly.
+- A router that answers no ping during warm-up is marked "doesn't answer ping" and its card is hidden, rather than shown as 100 % loss.
+- **Answered locally**: if an internet host's median RTT is at or below the router's baseline, something on the local network is answering for it (some captive portals and older routers intercept 1.1.1.1). That host is marked "answered locally" and left out of the verdict.
 
 ### 6.2 Probing
 
@@ -69,119 +73,147 @@ straylight is an always-on, two-target trace in the menu bar, with enough histor
 |---|---|
 | Method | ICMP echo over unprivileged datagram sockets: `socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)` and `socket(AF_INET6, SOCK_DGRAM, IPPROTO_ICMPV6)`. This is the approach in Apple's SimplePing sample and needs no root. |
 | Matching replies | The kernel may rewrite the ICMP identifier on datagram sockets, so replies are matched on sequence number plus a random 8-byte token in the payload |
-| Timing | Send time from `mach_continuous_time()` just before `sendto`; receive time from the kernel via `SO_TIMESTAMP_MONOTONIC`, so a slow wake-up in the app doesn't inflate the RTT |
+| Timing | Send time from `mach_absolute_time()` just before `sendto`; receive time from the kernel via `SO_TIMESTAMP_MONOTONIC`, so a slow wake-up in the app doesn't inflate the RTT. Both must use the same clock. `SO_TIMESTAMP_MONOTONIC` is believed to use `mach_absolute_time()`, which pauses during sleep; pairing it with `mach_continuous_time()` would add the total sleep since boot to every RTT. Confirm in M1 with an RTT check after sleep/wake. |
 | Payload | 56 bytes, like `ping` |
-| Rate | 1 probe per second per target on power; 1 per 5 s on battery (both configurable) |
+| Rate | 1 probe per second per target on power; 1 per 5 s on battery (both configurable). The battery rate also applies in Low Power Mode and when the path is constrained (Low Data Mode) or expensive (e.g. an iPhone hotspot). Warm-up (§6.1) and fast recheck (below) temporarily probe at 1 s. |
+| Fast recheck | When a probe is lost and the interval is longer than 1 s, that target is probed every second until 3 replies in a row arrive, then returns to its normal rate. Outages are caught at the same speed on battery as on power. |
 | Timeout | No reply within 2 s counts as lost. A reply after the timeout is logged as late, not counted as received. |
-| Fallback | If the internet target answers no ICMP for 10 probes while the router does, switch that target to TCP connect timing on port 443 (non-blocking `connect`, time to SYN-ACK, close immediately) and label it "TCP" |
-| Network changes | Probes in flight when the path changes (Wi‑Fi ↔ Ethernet, VPN up/down, sleep/wake) are discarded, not counted as lost. Probing restarts after targets are re-resolved. |
-| Pauses | No probes while the screen is locked or the display is asleep, unless "Keep monitoring while locked" is on (for overnight logging). With no network path, probing stops and the verdict is Offline. |
+| Fallback | During warm-up, if an internet host answers no ICMP while the router does, straylight tries a TCP connect to that host on port 443 (non-blocking `connect`, time to SYN-ACK, close immediately). Only if TCP succeeds does that host switch to TCP connect timing, labeled "TCP". ICMP failing on its own never triggers the switch: with TCP failing too, it's an outage. In TCP mode, one ICMP probe is still sent per minute; after 3 ICMP replies in a row, the host switches back. |
+| Network changes | Probes in flight when the path changes (Wi‑Fi ↔ Ethernet, VPN up/down, sleep/wake) are discarded, not counted as lost. Probing restarts with warm-up after targets are re-resolved. |
+| Pauses | No probes while the screen is locked or the display is asleep, unless "Keep monitoring while locked" is on (for overnight logging). No probes while paused from the menu (§6.6). With no network path, probing stops and the verdict is Offline. |
 
 ### 6.3 Metrics and verdict
 
-Per target, from a ring buffer of recent probes:
+Per target, from a ring buffer of recent probes. The **window** is the last 60 s or the last 20 probes, whichever is longer: 60 probes at 1 s, 20 probes (100 s) at 5 s. On battery the window is longer, so the verdict reacts more slowly to gradual degradation; fast recheck keeps outage detection quick.
 
 | Value | Definition |
 |---|---|
 | RTT now | The latest reply |
-| RTT median / p95 | Over the last 60 probes |
+| RTT median / p95 | Over the window, nearest-rank. Over 60 samples, p95 is the 3rd-highest; over 20, it's the highest. |
 | Baseline | Minimum RTT since the last network change |
-| Jitter | Mean absolute difference between consecutive RTTs over the last 60 probes (RFC 3550 style, unsmoothed), in ms |
-| Loss | Lost ÷ sent over the last 60 probes, in % |
+| Jitter | Mean of \|RTTᵢ − RTTᵢ₋₁\| over consecutive replies in the window, in ms (mean IPDV, unsmoothed; RFC 3550's smoothed jitter isn't used). A pair is skipped when a lost probe falls between the two replies. |
+| Loss | Lost ÷ sent over the window, in %. Lost and sent counts are also kept. |
+
+Each target is **OK**, **Bad** (any threshold below crossed), or **Down** (an outage in progress, see Events). The internet state combines its two hosts: OK if either is OK, Down if both are Down, Bad otherwise. Hosts marked "answered locally" don't count.
 
 **Verdict**, shown in the popover header and summarized in the menu bar:
 
 | Router | Internet | Verdict |
 |---|---|---|
 | OK | OK | **Good** |
+| Bad or Down | OK | **Good**. The router card notes "slow to answer ping; traffic through it is fine". Many routers deprioritize ping to themselves, so router-only trouble isn't a local problem. |
 | OK | Bad | **Internet problem**: the router is fine; the trouble is at the ISP or beyond |
-| Bad | any | **Local network problem**: Wi‑Fi or the router |
+| OK | Down | **Internet down**: the router is fine, but nothing gets past it |
+| Bad | Bad or Down | **Local network problem**: Wi‑Fi or the router |
+| Down | Down | **Local network down**: can't reach the router |
+| doesn't answer ping, or unreachable (VPN) | OK / Bad / Down | **Good** / **Connection problem** / **Connection down**. The header says the router can't be measured, so local and internet can't be told apart. |
 | no path | no path | **Offline** |
 
-Starting thresholds for "Bad" (to be tuned on real hardware in M3, since Wi‑Fi power saving makes router RTTs noisy):
+Custom targets have their own cards, events and history, and never affect the verdict.
+
+Starting thresholds for "Bad" (to be tuned in M7 against a week of real Wi‑Fi and Ethernet history, since Wi‑Fi power saving makes router RTTs noisy). Loss is a count so it means the same thing at every probe rate:
 
 | | Loss | Jitter | p95 RTT |
 |---|---|---|---|
-| Router | ≥ 2 % | > 10 ms | > 30 ms |
-| Internet | ≥ 2 % | > 30 ms | > 150 ms |
+| Router | ≥ 2 lost in the window | > 10 ms | > 30 ms |
+| Internet host | ≥ 2 lost in the window | > 30 ms | > 150 ms |
 
 A verdict has to hold for 10 s before it changes, so it doesn't flap.
 
 **Events**:
 
-- **Outage**: 3 or more consecutive lost probes to a target. Logged with start time, duration and target.
-- **Spike**: RTT above 3 × the median for 3 or more consecutive probes. Logged with start time, duration and worst RTT.
+- **Outage**: no reply from a target for at least 5 s, with at least 3 consecutive probes lost. Logged with start time, duration and target. The target is Down while the outage lasts.
+- **Spike**: RTT above both 3 × the window median and the median + 20 ms, for 3 or more consecutive replies. The median excludes the spike's own samples. Logged with start time, duration and worst RTT.
 
 ### 6.4 History
 
-- **Per-minute aggregates** per target (median RTT, p95, jitter, loss, and Wi‑Fi RSSI when on Wi‑Fi) for the last 24 hours. That's 1,440 rows per target, so it's small.
-- **Event log** (outages and spikes) for the last 30 days.
-- Both are stored in `~/Library/Application Support/straylight/`, written at most once a minute, so history survives restarts.
-- **Export CSV** from the popover: aggregates and events for a chosen time range, for sending to an ISP.
+- **Per-minute aggregates** per target for the last 7 days, then **hourly rollups** for the rest of the history retention period (30 days by default; 7, 30 or 90 in Settings). Each row has sent, lost and late counts, median RTT, p95, jitter, and Wi‑Fi RSSI when on Wi‑Fi.
+- **Every minute has a state**: measured, paused, locked, asleep, offline, or not running (the app wasn't open). Gaps are never shown or exported as outages, and ISP evidence isn't missing without explanation.
+- **Event log** (outages and spikes) for the history retention period.
+- Stored in an SQLite database (the system `libsqlite3`) in `~/Library/Application Support/straylight/`, written at most once a minute, so history survives restarts.
+- **Export CSV** from the popover: aggregates or events for a chosen time range, for sending to an ISP. Timestamps are ISO 8601 with the local UTC offset.
+  - Aggregates: `minute, state, target, address, protocol, sent, lost, late, loss_pct, median_ms, p95_ms, jitter_ms, rssi_dbm`
+  - Events: `start, end, duration_s, type, target, address, worst_rtt_ms`
+  - The Mac's own IP addresses aren't included. Target addresses, including the router's, are.
 
 ### 6.5 Wi‑Fi context
 
-When the primary interface is Wi‑Fi, CoreWLAN (`CWWiFiClient.shared().interface()`) supplies RSSI, noise, transmit rate and channel (band and width). The network name (SSID) and BSSID are not shown, because they need Location permission.
+When the primary interface is Wi‑Fi, CoreWLAN (`CWWiFiClient.shared().interface()`) supplies RSSI, noise, transmit rate and channel (band and width), sampled every 5 s on a probe tick. The network name (SSID) and BSSID are not shown, because they need Location permission.
 
 **Permissions check (M1):** confirm that RSSI, noise, rate and channel are available on macOS 27 without Location authorization. If they aren't, drop this section rather than ask for Location.
 
 ### 6.6 Menu bar
 
-- A single `NSStatusItem`, monochrome in the menu bar's label color, fixed width.
+- A single `NSStatusItem`, monochrome in the menu bar's label color, fixed width. The width fits the widest value: `999ms`. Longer RTTs are shown in seconds (`1.2s`). `—` while warming up or with no data.
 - **Display styles**:
-  - `text`: label stacked above value (`RTT` / `23ms`)
+  - `text`: label stacked above value (`RTT` / `23ms`; the label reads `TCP` in TCP mode)
   - `trace`: an RTT trace of recent history. A lost probe drops the line to the baseline, so a dead connection literally flatlines.
   - `text+trace`
 - **Target shown**: Internet (default), Router, or both as two short stacked traces.
-- The verdict is shown as a mark, not a color: nothing when Good, `!` for a problem, `×` for Offline.
+- The verdict is shown as a mark, not a color: nothing when Good, `!` for a problem, `×` for down or Offline, `‖` while paused.
 - Click opens the popover. Right-click or Control-click opens a small menu: Open, Pause for 1 hour, Settings, Check for Updates, Quit.
+- **Pause for 1 hour** stops all probes. The trace freezes and dims, the mark shows `‖`, and the menu item becomes "Resume". Probing restarts after an hour, on Resume, or on Quit and relaunch. Paused minutes are recorded as paused.
 - VoiceOver reads a summary such as "Good. Internet 23 milliseconds, jitter 4, loss 0 percent. Router 3 milliseconds."
 
 ### 6.7 Popover
 
 A single scrolling panel about 340 pt wide, built with SwiftUI.
 
-1. **Header**: the verdict in words (e.g. "Internet problem: router is fine, 8 % loss to 1.1.1.1"), interface type, local IP, router IP, "via VPN" when relevant.
-2. **Target cards** (Router, Internet, any custom targets): large RTT now; median, p95, baseline, jitter, loss; a 60-second trace with lost probes marked.
-3. **History**: 1 h or 24 h chart of per-minute median and p95, with loss as bars under the baseline and RSSI as a faint line when on Wi‑Fi, so "loss went up when the signal dropped" is visible.
+1. **Header**: the verdict in words (e.g. "Internet problem: router is fine, 8 % loss to 1.1.1.1 and 8.8.8.8"), interface type, local IP, router IP, "via VPN" and "IPv6 problem" when relevant.
+2. **Target cards** (Router, Internet, any custom targets): large RTT now; median, p95, baseline, jitter, loss; a 60-second trace with lost probes marked. The internet card has a row per host (and the IPv6 row), and labels hosts in TCP mode or answered locally.
+3. **History**: 1 h, 24 h or 7 d chart of median and p95, with loss as bars under the baseline, RSSI as a faint line when on Wi‑Fi, so "loss went up when the signal dropped" is visible, and paused/locked/asleep gaps shaded and labeled.
 4. **Wi‑Fi card**: RSSI, noise, signal-to-noise, transmit rate, band and channel width.
 5. **Events**: the last 10 outages and spikes, plus **Export CSV**.
-6. **Footer**: settings gear, update indicator, Quit.
+6. **Footer**: settings gear, Copy diagnostics, update indicator, Quit.
+
+**States**: while warming up, the cards show `—` and "Measuring…". While paused, the header reads "Paused until 14:32" with a Resume button. When Offline, the cards are replaced by "No network" and the time it went offline. A hidden router leaves a one-line note in its place: "Router doesn't answer ping".
 
 Traces and charts are drawn with SwiftUI `Canvas`, as in flatline. Popover views exist only while the popover is open.
 
-### 6.8 Notifications (opt-in)
+### 6.8 First run
 
-- **Outage**: when an outage to the internet target lasts 10 s, and again when it ends, with its duration.
+On first launch the popover opens once with a short note: what straylight sends and where (small pings to your router, 1.1.1.1 and 8.8.8.8), how to change the targets, and the Launch at login prompt. Notification permission is requested only when the user turns a notification on.
+
+### 6.9 Notifications (opt-in)
+
+- **Outage**: when an outage to the internet lasts 10 s, and again when it ends, with its duration.
 - **Verdict changes** that hold for at least 30 s.
 
 Both are off by default.
 
-### 6.9 Settings
+### 6.10 Settings
 
 Shown in the popover (an inline settings panel, as in flatline), stored in `UserDefaults`:
 
 | Setting | Options | Default |
 |---|---|---|
 | Probe interval on power | 0.5 s, 1 s, 2 s, 5 s | 1 s |
-| Probe interval on battery | 1 s, 2 s, 5 s, 10 s | 5 s |
-| Internet target | 1.1.1.1, 8.8.8.8, 9.9.9.9, custom host | 1.1.1.1 |
+| Probe interval on battery, Low Power Mode, Low Data Mode, or expensive paths | 1 s, 2 s, 5 s, 10 s | 5 s |
+| Internet hosts | Primary and secondary: 1.1.1.1, 8.8.8.8, 9.9.9.9, custom host; secondary can be off | 1.1.1.1 and 8.8.8.8 |
+| Probe IPv6 on dual-stack networks | on / off | on |
 | Custom targets | up to 2 hosts | none |
 | Menu bar target | Internet, Router, both | Internet |
 | Display style | text, trace, text+trace | text+trace |
 | Keep monitoring while locked | on / off | off |
-| Event log retention | 7, 30, 90 days | 30 days |
+| History retention | 7, 30, 90 days (per-minute detail is kept for 7) | 30 days |
 | Notifications | Outages, Verdict changes | off |
 | Accent color | phosphor green, cyan, magenta, amber, system | phosphor green |
 | Launch at login | on / off (`SMAppService.mainApp`) | off, with a prompt on first run |
 | Automatic updates | check automatically / download automatically | check automatically, daily |
 
-### 6.10 Updates and website
+### 6.11 Diagnostics
+
+There's no telemetry, so bug reports rely on what the user can copy:
+
+- Logging through `os_log` with subsystem `as.banast.straylight` and categories `probe`, `targets`, `stats`, `history`.
+- **Copy diagnostics** in the popover footer copies app and macOS versions, settings, the current targets with their addresses, protocols and states, the last 50 events and the last 10 minutes of log lines to the clipboard. Nothing is sent anywhere.
+
+### 6.12 Updates and website
 
 Same setup as flatline:
 
 - **Sparkle 2** via Swift Package Manager. Appcast at `https://straylight.banast.as/appcast.xml`, EdDSA-signed updates, notarized DMGs under `/releases/`, appcast generated by the release script with notes from `CHANGELOG.md`.
-- A small static site in `site/`: landing page, screenshot, download button, requirements, release notes. The landing page and README say plainly that straylight sends small ping packets to the targets you choose (1.1.1.1 by default).
+- A small static site in `site/`: landing page, screenshot, download button, requirements, release notes. The landing page and README say plainly that straylight sends small ping packets to the targets you choose (your router, 1.1.1.1 and 8.8.8.8 by default).
 
 ## 7. Technical design
 
@@ -190,7 +222,7 @@ Same setup as flatline:
 - **Swift 6.4**, strict concurrency, Swift 6 language mode
 - **SwiftUI** for all views; **AppKit** only for `NSStatusItem` / `NSPopover`
 - **Observation** (`@Observable`) for the model
-- **BSD sockets** for probing, **SystemConfiguration** and **Network** (`NWPathMonitor`) for paths, **CoreWLAN** for Wi‑Fi details
+- **BSD sockets** for probing, **SystemConfiguration** and **Network** (`NWPathMonitor`) for paths, **CoreWLAN** for Wi‑Fi details, the system **SQLite** library for history
 - Deployment target **macOS 27.0**, **arm64 only**
 - No third-party dependencies other than **Sparkle**
 
@@ -204,10 +236,11 @@ straylight/
 │       ├── Sources/StraylightKit/
 │       │   ├── ICMPProber.swift      # datagram sockets, send, receive, matching, timeouts
 │       │   ├── TCPProber.swift       # port-443 connect-time fallback
-│       │   ├── Targets.swift         # gateway discovery, VPN handling, path changes
-│       │   ├── Stats.swift           # median, p95, jitter, loss, verdict, events
-│       │   ├── History.swift         # per-minute aggregates, event log, CSV export
+│       │   ├── Targets.swift         # gateway discovery, IPv6, VPN handling, warm-up, path changes
+│       │   ├── Stats.swift           # median, p95, jitter, loss, target states, verdict, events
+│       │   ├── History.swift         # SQLite store, per-minute and hourly aggregates, event log, CSV export
 │       │   ├── WiFi.swift            # CoreWLAN details
+│       │   ├── Diagnostics.swift     # os_log categories, Copy diagnostics
 │       │   ├── RingBuffer.swift      # from flatline (see §13)
 │       │   └── Format.swift          # from flatline
 │       └── Tests/StraylightKitTests/
@@ -225,15 +258,24 @@ straylight/
 └── README.md
 ```
 
-Tests cover the stats math against fixed RTT sequences, reply matching when the kernel rewrites identifiers, discarding probes across a simulated path change, and a real probe to `127.0.0.1`.
+Tests cover:
+
+- the stats math against fixed RTT sequences, including jitter across losses
+- every row of the §6.3 verdict table, two-host combining and "answered locally"
+- reply matching when the kernel rewrites identifiers
+- the fallback: ICMP blocked with TCP working switches to TCP; ICMP and TCP both failing is an outage and doesn't switch
+- discarding probes across a simulated path change
+- history minute states and the CSV columns
+- a real probe to `127.0.0.1`
 
 ### 7.3 Probe loop
 
-- One send timer with 10 % leeway sends to every target in the same wake-up.
+- One send timer with 10 % leeway sends to every target due in the same wake-up. Its interval drops to 1 s during warm-up or while any target is in fast recheck.
 - Replies arrive through a `DispatchSourceRead` on each socket (one IPv4, one IPv6), so nothing polls for replies.
 - Timeouts are checked on the next send tick, not with a separate timer.
 - All socket work runs on one serial queue. The `@Observable` snapshot on the main actor is updated at most once per tick.
 - History is appended in memory and flushed to disk once a minute.
+- **App Nap** may stretch the send timer. RTTs aren't affected, because both timestamps are taken at the socket, but probe spacing is. M1 measures whether timers drift past the 10 % leeway with the app in the background; if they do, a `ProcessInfo` activity is held while probing.
 
 **Battery:** Wi‑Fi radios save power by sleeping between beacons, and a probe every second keeps waking them. That's why the battery default is 5 s and probing stops while the screen is locked. Energy impact on battery is measured in M7 against flatline.
 
@@ -246,20 +288,20 @@ Same approach as flatline (its PRD §7.4): draw into one image per tick, put it 
 - Hardened runtime on. Not sandboxed, for the same Sparkle reasons as flatline.
 - Signed with **Developer ID Application (team `F87BNUZAVJ`)**, notarized with `notarytool`, ticket stapled.
 - Bundle ID `as.banast.straylight`. `LSUIElement = YES` (no Dock icon).
-- Network traffic is limited to probes to the configured targets and Sparkle checking the appcast. No telemetry or analytics. History stays on the Mac unless the user exports it.
+- Network traffic is limited to probes to the configured targets and Sparkle checking the appcast. No telemetry or analytics. History and diagnostics stay on the Mac unless the user exports or copies them.
 
 ## 8. Performance budgets
 
-Measured on an M-series Mac, two targets, popover closed:
+Measured on an M-series Mac with the default targets (router, two internet hosts, plus IPv6 on a dual-stack network), popover closed:
 
 | Metric | Budget |
 |---|---|
 | Average CPU at a 1 s interval | < 0.1 % of one core |
 | Resident memory | < 30 MB |
-| Wake-ups | ≤ 1 timer wake-up plus one read event per target, per interval |
+| Wake-ups | ≤ 1 timer wake-up plus one read event per reply, per interval |
 | Network | < 1 kbit/s each way per target at a 1 s interval |
 | Energy Impact (Activity Monitor), on power | ≈ flatline's |
-| History on disk | < 5 MB at 90 days of events |
+| History on disk | < 10 MB at 90-day retention |
 | Popover open → first frame | < 50 ms |
 
 Checked before each release with Instruments and with a tick profiler: run the binary with `STRAYLIGHT_PROFILE=1`, as with flatline.
@@ -269,10 +311,13 @@ Checked before each release with Instruments and with a tick profiler: run the b
 | Metric | Reference | Tolerance |
 |---|---|---|
 | Median RTT | `ping -c 60` to the same target at the same time | ± 0.5 ms or ± 5 %, whichever is larger |
+| Median RTT after sleep/wake | Same as above, run after the Mac has slept at least once | Same tolerance (catches mismatched clocks) |
 | Loss | `ping -c 300` under Network Link Conditioner's 5 % loss profile | ± 2 points |
 | Jitter | The §6.3 formula applied to `ping`'s per-reply times | ± 1 ms |
 | Router | `route -n get default` | Exact |
-| Network change | Switching Wi‑Fi ↔ Ethernet, joining a VPN, sleep/wake | Targets re-resolved and verdict updated within 3 s; no false outage logged |
+| Network change | Switching Wi‑Fi ↔ Ethernet, joining a VPN, sleep/wake | Targets re-resolved and verdict updated within 3 s after warm-up; no false outage logged |
+| Outage on battery | Unplug the router's WAN cable for 30 s on battery | Outage logged with start and end within one probe interval of the real ones; verdict Internet down; no switch to TCP |
+| ICMP blocked | Block outbound ICMP to the internet hosts with `pf` | Hosts switch to TCP during warm-up; verdict stays Good |
 
 ## 10. Accessibility and localization
 
@@ -285,34 +330,37 @@ Checked before each release with Instruments and with a tick profiler: run the b
 
 | # | Milestone | Done when |
 |---|---|---|
-| M0 | Scaffold | XcodeGen project builds an empty menu bar app; `swift test` runs |
-| M1 | Prober | ICMP over IPv4 and IPv6, reply matching, timeouts, TCP fallback; RTT matches §9; Wi‑Fi permissions check done |
-| M2 | Targets + paths | Gateway discovery, VPN handling, path changes with no false loss |
-| M3 | Stats + verdict | Metrics, verdict, events; thresholds tuned on real Wi‑Fi and Ethernet |
-| M4 | Menu bar | All styles, both-targets view, verdict marks, fixed width |
-| M5 | Popover | Target cards, Wi‑Fi card, verdict header |
-| M6 | History | Per-minute aggregates, event log, persistence, CSV export, notifications |
-| M7 | Settings + battery | All §6.9 settings persist; battery interval and lock pause work; energy measured |
+| M0 | Scaffold | XcodeGen project builds an empty menu bar app; `swift test` runs; String Catalog in place |
+| M1 | Prober | ICMP over IPv4 and IPv6, reply matching, timeouts, TCP fallback; RTT matches §9, including after sleep/wake; Wi‑Fi permissions check and App Nap check done |
+| M2 | Targets + paths | Gateway discovery, IPv6 and link-local router, two internet hosts, VPN handling, warm-up, fallback decision, path changes with no false loss |
+| M3 | Stats + verdict | Metrics, target states, verdict, events, fast recheck; every verdict row unit-tested; starting thresholds in place |
+| M4 | History | SQLite store, per-minute and hourly aggregates, minute states, event log, retention, CSV export |
+| M5 | Menu bar | All styles, both-targets view, verdict marks, pause, fixed width; VoiceOver summary |
+| M6 | Popover | Target cards, Wi‑Fi card, verdict header, history chart, all §6.7 states, first run, Copy diagnostics; VoiceOver labels, Reduce Motion, Increase Contrast |
+| M7 | Settings, battery, tuning | All §6.10 settings persist; notifications; battery, Low Power and Low Data rates and lock pause work; energy measured; thresholds tuned against a week of real Wi‑Fi and Ethernet history |
 | M8 | Distribution | `scripts/release.sh` produces a signed, notarized, stapled DMG |
 | M9 | Updates + site | Sparkle wired up; site deployed with appcast; an update tested end to end |
 | M10 | 1.0 | §8 budgets and §9 criteria verified; README screenshots; tagged release |
 
 ## 12. Decisions
 
-| Question | Decision (2026-10-25) |
+| Question | Decision |
 |---|---|
-| Name | **straylight** |
-| Signing | Same Developer ID team as flatline (`F87BNUZAVJ`), notarized with `notarytool` |
-| Hosting | **Cloudflare Pages** at straylight.banast.as, same as flatline |
-| License | **MIT** |
-| Menu bar colors | **Monochrome**, for the same reason as flatline |
+| Name | **straylight** (2026-10-25) |
+| Signing | Same Developer ID team as flatline (`F87BNUZAVJ`), notarized with `notarytool` (2026-10-25) |
+| Hosting | **Cloudflare Pages** at straylight.banast.as, same as flatline (2026-10-25) |
+| License | **MIT** (2026-10-25) |
+| Menu bar colors | **Monochrome**, for the same reason as flatline (2026-10-25) |
+| Default internet target | **Two hosts from different providers**, 1.1.1.1 and 8.8.8.8; the internet is OK if either is. The extra traffic is under 1 kbit/s. (2026-10-26) |
+| IPv6 | **IPv4 drives the verdict**; on dual-stack networks the primary host is also probed over IPv6 and problems are noted; IPv6-only networks use IPv6 throughout (2026-10-26) |
+| Router-only trouble | **Not a local problem** while the internet is OK, because routers often deprioritize ping to themselves (2026-10-26) |
+| History storage | **SQLite** (system library); per-minute for 7 days, hourly up to the retention period (2026-10-26) |
 
 ## 13. Open questions
 
 1. **Shared code with flatline and freeside**: copy `RingBuffer`, `Format`, the menu bar renderer and the release scripts, or extract a shared Swift package (working name `sprawl`)? Same question as in freeside's PRD; decide once for all three.
-2. **Default internet target**: one target (1.1.1.1), or two from different providers (1.1.1.1 and 8.8.8.8) so one provider's bad day doesn't look like your ISP's? Two doubles the traffic.
-3. **Hop-by-hop view**: an mtr-style view would show where along the path loss starts. It needs TTL-limited probes, and it's not yet confirmed that unprivileged ICMP datagram sockets receive Time Exceeded replies. Worth a spike after 1.0.
-4. **DNS timing**: is resolver latency worth tracking? Caching makes it hard to measure honestly.
-5. **On-demand capacity test**: a button that runs macOS's `networkQuality` and shows the result? It saturates the link for about 20 s, so on demand only.
-6. **Flatline integration**: should flatline's network card show straylight's verdict when both are running, or should the apps stay fully separate?
-7. **Repo visibility**: private until 1.0, or public from the start?
+2. **Hop-by-hop view**: an mtr-style view would show where along the path loss starts. It needs TTL-limited probes, and it's not yet confirmed that unprivileged ICMP datagram sockets receive Time Exceeded replies. Worth a spike after 1.0.
+3. **DNS timing**: is resolver latency worth tracking? Caching makes it hard to measure honestly.
+4. **On-demand capacity test**: a button that runs macOS's `networkQuality` and shows the result? It saturates the link for about 20 s, so on demand only.
+5. **Flatline integration**: should flatline's network card show straylight's verdict when both are running, or should the apps stay fully separate?
+6. **Repo visibility**: private until 1.0, or public from the start?

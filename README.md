@@ -10,9 +10,10 @@ straylight is a sibling to [flatline](https://github.com/banastas/flatline). fla
 
 ## Features (planned for 1.0)
 
-- **Router and internet measured together**, with a plain verdict: Good, Internet problem, Local network problem, or Offline
+- **Router and internet measured together**, with a plain verdict: Good, Internet problem, Internet down, Local network problem, or Offline
+- **Two internet hosts from different providers**, so one provider's bad day doesn't look like your ISP's
 - **Latency** (now, median, p95), **jitter**, and **loss** per target, with a 60-second trace. A lost ping drops the trace flat.
-- **History**: per-minute stats for the last 24 hours and a 30-day log of outages and spikes, with **CSV export** to send to your ISP
+- **History**: per-minute stats for 7 days, hourly stats and a log of outages and spikes for 30 days (up to 90), with **CSV export** to send to your ISP
 - **Wi‑Fi context**: signal strength, noise and transmit rate, so you can see when loss follows a weak signal
 - Optional custom targets, such as a VPN endpoint or a game server
 - Optional notifications for outages
@@ -22,7 +23,7 @@ straylight is a sibling to [flatline](https://github.com/banastas/flatline). fla
 
 ## Network traffic
 
-straylight sends small ping packets (56 bytes) to the targets you choose: your router and `1.1.1.1` by default. That's one per target per second on power and one every 5 seconds on battery. It stops while the screen is locked unless you turn on overnight monitoring. If a network blocks ping, it times a normal HTTPS connection instead. History stays on your Mac unless you export it.
+straylight sends small ping packets (56 bytes) to the targets you choose: your router, `1.1.1.1` and `8.8.8.8` by default, plus `1.1.1.1` over IPv6 on networks that have it. That's one per target per second on power and one every 5 seconds on battery, briefly once a second after a network change or a lost ping. It stops while the screen is locked unless you turn on overnight monitoring. If a network blocks ping, it times a normal HTTPS connection instead. History stays on your Mac unless you export it.
 
 ## Requirements
 
