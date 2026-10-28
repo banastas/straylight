@@ -57,6 +57,18 @@ notarize() {
     fi
 }
 
+# Staples the ticket, retrying: right after acceptance Apple's ticket often
+# isn't available yet, and stapling fails without saying why.
+staple() {
+    local attempt
+    for attempt in 1 2 3 4 5 6; do
+        xcrun stapler staple -q "$1" && return 0
+        echo "    ticket for $1 not available yet, retrying in 15 s"
+        sleep 15
+    done
+    fail "could not staple $1"
+}
+
 IDENTITY=$(security find-identity -v -p codesigning | sed -nE "s/.*\"(Developer ID Application: .*\($TEAM_ID\))\"/\1/p" | head -1)
 [[ -n $IDENTITY ]] || fail "no Developer ID Application certificate for team $TEAM_ID in the keychain"
 NOTES=$(release_notes_html)
@@ -104,7 +116,7 @@ if (( NOTARIZE )); then
     ditto -c -k --keepParent "$APP" "$DIST/straylight-notarize.zip"
     notarize "$DIST/straylight-notarize.zip"
     rm "$DIST/straylight-notarize.zip"
-    xcrun stapler staple -q "$APP"
+    staple "$APP"
 fi
 
 step "Building DMG"
@@ -119,7 +131,7 @@ codesign --sign "$IDENTITY" --timestamp "$DMG"
 if (( NOTARIZE )); then
     step "Notarizing the DMG"
     notarize "$DMG"
-    xcrun stapler staple -q "$DMG"
+    staple "$DMG"
 
     step "Checking Gatekeeper"
     spctl --assess --type execute "$APP"
