@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         quitCleanlyOnSIGTERM()
         model.start()
         statusItem = StatusItemController(model: model, preferences: preferences)
+        statusItem?.showFirstRunIfNeeded()
         devChecks = DevChecks.startIfRequested()
     }
 

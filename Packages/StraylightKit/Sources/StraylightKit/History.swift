@@ -324,12 +324,24 @@ struct HistoryStore {
         try aggregates(where: "start + seconds > ? AND start < ?", [.real(start.timeIntervalSince1970), .real(end.timeIntervalSince1970)])
     }
 
+    /// One target's written aggregates overlapping the range, oldest first.
+    func aggregates(from start: Date, to end: Date, role: TargetRole) throws -> [AggregateRow] {
+        try aggregates(where: "start + seconds > ? AND start < ? AND role = ?",
+                       [.real(start.timeIntervalSince1970), .real(end.timeIntervalSince1970), .text(role.description)])
+    }
+
     /// Written events overlapping the range, oldest first.
     func events(from start: Date, to end: Date) throws -> [NetworkEvent] {
-        try db.query(
-            "SELECT kind, role, host, address, start, end, worst FROM events WHERE end > ? AND start < ? ORDER BY start",
-            [.real(start.timeIntervalSince1970), .real(end.timeIntervalSince1970)]
-        ).compactMap { row in
+        try events(where: "end > ? AND start < ? ORDER BY start", [.real(start.timeIntervalSince1970), .real(end.timeIntervalSince1970)])
+    }
+
+    /// The latest written events, newest first.
+    func latestEvents(limit: Int) throws -> [NetworkEvent] {
+        try events(where: "1 ORDER BY start DESC LIMIT ?", [.integer(Int64(limit))])
+    }
+
+    private func events(where condition: String, _ values: [Database.Value]) throws -> [NetworkEvent] {
+        try db.query("SELECT kind, role, host, address, start, end, worst FROM events WHERE \(condition)", values).compactMap { row in
             guard let kind = row[0].string.flatMap(NetworkEvent.Kind.init), let role = row[1].string.flatMap(TargetRole.init),
                   let host = row[2].string, let address = row[3].string.flatMap(ProbeAddress.init),
                   let start = row[4].double, let end = row[5].double else { return nil }
@@ -522,6 +534,25 @@ public final class History: @unchecked Sendable {
 
     public func aggregates(from start: Date, to end: Date) throws -> [AggregateRow] {
         try queue.sync { try store.aggregates(from: start, to: end) }
+    }
+
+    /// The history chart for one target. Writes what has finished first, so
+    /// the chart runs up to the minute in progress.
+    public func chart(_ range: ChartRange, role: TargetRole, now: Date = Date()) throws -> [ChartBucket] {
+        try queue.sync {
+            try store.flush(through: now, now: now, force: true)
+            let start = now.addingTimeInterval(-range.duration - Double(range.bucketSeconds))
+            return HistoryChart.buckets(range, role: role, periods: try store.periods(from: start, to: now),
+                                        aggregates: try store.aggregates(from: start, to: now, role: role), now: now)
+        }
+    }
+
+    /// The latest outages and spikes, newest first.
+    public func latestEvents(limit: Int) throws -> [NetworkEvent] {
+        try queue.sync {
+            try store.flush(through: Date(), now: Date(), force: true)
+            return try store.latestEvents(limit: limit)
+        }
     }
 
     public func events(from start: Date, to end: Date) throws -> [NetworkEvent] {

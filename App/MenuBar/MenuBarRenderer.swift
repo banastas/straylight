@@ -59,7 +59,7 @@ enum MenuBarRenderer {
             text == "—" ? text : text.leftPadded(to: widest)
         }
         func trace(_ role: TargetRole) -> [Double] {
-            MenuBarText.trace(model.traces[role] ?? [], floor: role == .router ? routerTraceFloor : internetTraceFloor)
+            MenuBarText.trace(model.menuBarTrace(role), floor: role == .router ? routerTraceFloor : internetTraceFloor)
         }
 
         var pieces: [Piece] = []

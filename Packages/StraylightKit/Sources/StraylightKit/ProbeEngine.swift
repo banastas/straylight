@@ -1,5 +1,6 @@
 import Darwin
 import Dispatch
+import os
 
 /// The probe loop (PRD §7.3). Watches the network, plans targets, runs
 /// warm-up and the TCP fallback, and reports what it measures. Stats and the
@@ -144,6 +145,8 @@ public final class ProbeEngine: @unchecked Sendable {
         trackers = Dictionary(uniqueKeysWithValues: targets.map { ($0.role, TargetTracker(target: $0, isVPN: path.isVPN, now: now)) })
         lastCheck.removeAll()
         routerAnswered = false
+        let summary = targets.map { "\($0.role)=\($0.address)" }.joined(separator: " ")
+        Self.log.notice("path \(path.primaryInterface ?? "none", privacy: .public)\(path.isVPN ? " (VPN)" : "", privacy: .public) targets \(summary, privacy: .public)")
         onEvent(.targets(path, targets))
         for role in order { onEvent(.status(role, .warmingUp)) }
         guard !targets.isEmpty else { return }
@@ -175,6 +178,7 @@ public final class ProbeEngine: @unchecked Sendable {
         let sleep = MachClock.sleepSinceBoot()
         if sleep > sleepTotal, sleep - sleepTotal > MachClock.ticks(seconds: 1) {
             sleepTotal = sleep
+            Self.log.notice("woke from sleep")
             replan()
             return
         }
@@ -229,8 +233,11 @@ public final class ProbeEngine: @unchecked Sendable {
         if status == .tcp || status == .doesntAnswerPing || status == .unreachableVPN {
             lastCheck[role] = now
         }
+        Self.log.notice("\(role, privacy: .public) \(String(describing: status), privacy: .public)")
         onEvent(.status(role, status))
     }
+
+    private static let log = Logger(subsystem: "as.banast.straylight", category: "targets")
 
     // MARK: - Results
 

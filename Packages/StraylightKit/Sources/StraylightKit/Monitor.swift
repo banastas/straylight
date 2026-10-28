@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import os
 
 /// One target as the popover shows it.
 public struct TargetSnapshot: Equatable, Sendable {
@@ -154,10 +155,7 @@ struct MonitorCore {
         }
 
         let routerState = snapshot[.router].flatMap { $0.status.measuredProtocol == nil ? nil : $0.state }
-        let hosts = snapshot.targets.filter {
-            if case .internet = $0.target.role { !$0.answeredLocally && $0.status.measuredProtocol != nil } else { false }
-        }
-        snapshot.internet = Verdict.internet(hosts.map(\.state))
+        snapshot.internet = Verdict.internet(snapshot.countedInternetHosts.map(\.state))
         if let ipv6 = snapshot[.internetIPv6], !ipv6.answeredLocally, snapshot.internet == .ok {
             snapshot.ipv6Problem = ipv6.state.isBadOrDown
         }
@@ -242,6 +240,11 @@ public final class Monitor: @unchecked Sendable {
     }
 
     private func publish(_ events: [NetworkEvent]) {
-        for event in events { onUpdate(.event(event)) }
+        for event in events {
+            Self.log.notice("\(event.kind.rawValue, privacy: .public) \(event.host, privacy: .public) \(event.address, privacy: .public) \(event.duration, format: .fixed(precision: 1), privacy: .public) s\(event.worstRTT.map { String(format: ", worst %.1f ms", $0) } ?? "", privacy: .public)")
+            onUpdate(.event(event))
+        }
     }
+
+    private static let log = Logger(subsystem: "as.banast.straylight", category: "stats")
 }

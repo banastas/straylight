@@ -142,7 +142,7 @@ public enum TargetState: Equatable, Sendable {
     /// An outage is in progress.
     case down
 
-    var isBadOrDown: Bool {
+    public var isBadOrDown: Bool {
         switch self {
         case .bad, .down: true
         case .measuring, .ok: false

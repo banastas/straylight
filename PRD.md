@@ -140,7 +140,7 @@ A verdict has to hold for 10 s before it changes, so it doesn't flap. The except
 
 ### 6.5 Wi‑Fi context
 
-When the primary interface is Wi‑Fi, CoreWLAN (`CWWiFiClient.shared().interface()`) supplies RSSI, noise, transmit rate and channel (band and width), sampled every 5 s on a probe tick. The network name (SSID) and BSSID are not shown, because they need Location permission.
+When the primary interface is Wi‑Fi, CoreWLAN (`CWWiFiClient.shared().interface()`) supplies RSSI, noise, transmit rate and channel (band and width). The Wi‑Fi card reads them every 5 s on a probe round, and only while the popover is open; history samples RSSI every 10 s on its own timer. The network name (SSID) and BSSID are not shown, because they need Location permission.
 
 **Permissions check (M1, 2026-10-28): passed.** On macOS 27.2, the app bundle without Location authorization gets RSSI, noise, transmit rate and channel (number, band, width) from CoreWLAN. SSID and BSSID come back nil, as expected.
 
@@ -153,7 +153,7 @@ When the primary interface is Wi‑Fi, CoreWLAN (`CWWiFiClient.shared().interfac
   - `text+trace`
 - **Target shown**: Internet (default), Router, or both as two short stacked traces, with the values stacked as `R 0.4ms` over `I 6.8ms`.
 - The verdict is shown as a mark, not a color: nothing when Good or measuring, `!` for a problem (including Can't measure the internet), `×` for down or Offline, `‖` while paused. Marks are drawn as shapes, not text, and the mark's space is always reserved.
-- Click opens the popover. Right-click or Control-click opens a small menu: Open, Pause for 1 hour, Settings, Check for Updates, Quit. Until the popover exists (M6), any click opens the menu, headed by the verdict; Open and Settings arrive with the popover and Check for Updates with Sparkle (M9).
+- Click opens the popover. Right-click or Control-click opens a small menu: Open, Pause for 1 hour, Settings, Check for Updates, Quit. The menu is headed by the verdict. Check for Updates arrives with Sparkle (M9).
 - **Pause for 1 hour** stops all probes. The trace and value freeze and dim, the mark shows `‖` at full strength, and the menu item becomes "Resume". Resuming starts with warm-up, like a network change. Probing restarts after an hour, on Resume, or on Quit and relaunch. Paused minutes are recorded as paused.
 - VoiceOver reads a summary such as "Good. Internet 23 milliseconds, jitter 4, loss 0 percent. Router 3 milliseconds." While paused: "Paused until 14:32."
 
@@ -172,9 +172,17 @@ A single scrolling panel about 340 pt wide, built with SwiftUI.
 
 Traces and charts are drawn with SwiftUI `Canvas`, as in flatline. Popover views exist only while the popover is open.
 
+Details settled in M6:
+
+- **Header line** under the verdict says what's wrong and where, using the worst problem among the targets that count: loss first, then slow replies (p95), then jitter, with the worst value, for example "Router is fine; 8% loss to 1.1.1.1 and 8.8.8.8". Router-only trouble while Good reads "The internet is fine. The router is slow to answer ping."
+- **Traces** show the last 60 s by send time, so a 5 s interval gives 12 points. A lost probe drops the line to the baseline and gets a tick below it. The internet trace overlays both hosts, the secondary fainter. While warming up the stats show `—`.
+- **History chart**: 1 h is 60 one-minute buckets, 24 h is 144 ten-minute buckets, 7 d is 168 hourly buckets. Each bucket combines its rows like the hourly rollups (median of medians, p95 of p95s, loss from the summed counts, median RSSI) and is measured if any of it was, otherwise the state that covered most of it. Time with no row is not running, except the minute in progress. The chart is for the primary internet host or the router, picked in the card. Loss bars reach full height at 10 %, and any loss gets at least a sliver. RSSI is scaled from −90 dBm at the bottom to −30 at the top. Gaps are labeled when the label fits. The chart reloads every minute while open.
+- **Export CSV** offers measurements or events for the last hour, 24 hours, 7 days, or everything kept (the retention period), then a save panel.
+- The footer's update indicator arrives with Sparkle (M9).
+
 ### 6.8 First run
 
-On first launch the popover opens once with a short note: what straylight sends and where (small pings to your router, 1.1.1.1 and 8.8.8.8), how to change the targets, and the Launch at login prompt. Notification permission is requested only when the user turns a notification on.
+On first launch the popover opens once with a short note: what straylight sends and where (small pings to your router, 1.1.1.1 and 8.8.8.8), how to change the targets, and the Launch at login prompt. The note counts as seen after "Got it", or once the popover has been open for 3 s, so a popover that closes at once (the app didn't get focus) shows it again next time. Notification permission is requested only when the user turns a notification on.
 
 ### 6.9 Notifications (opt-in)
 
@@ -185,7 +193,7 @@ Both are off by default.
 
 ### 6.10 Settings
 
-Shown in the popover (an inline settings panel, as in flatline), stored in `UserDefaults`:
+Shown in the popover (an inline settings panel, as in flatline), stored in `UserDefaults`. Since M6 the panel has the menu bar target and style, the probe interval on power, the accent and Launch at login; M7 adds the rest.
 
 | Setting | Options | Default |
 |---|---|---|
@@ -208,7 +216,7 @@ Shown in the popover (an inline settings panel, as in flatline), stored in `User
 There's no telemetry, so bug reports rely on what the user can copy:
 
 - Logging through `os_log` with subsystem `as.banast.straylight` and categories `probe`, `targets`, `stats`, `history`.
-- **Copy diagnostics** in the popover footer copies app and macOS versions, settings, the current targets with their addresses, protocols and states, the last 50 events and the last 10 minutes of log lines to the clipboard. Nothing is sent anywhere.
+- **Copy diagnostics** in the popover footer copies app and macOS versions, settings, the current targets with their addresses, protocols and states, the last 50 events and the last 10 minutes of log lines to the clipboard. Nothing is sent anywhere. The Mac's own addresses aren't included. Log lines come from `OSLogStore` for the app's own process; network changes, target status changes, wakes and events are logged at notice level so they're kept. Reading the log takes a few seconds, and the button says "copying…" meanwhile.
 
 ### 6.12 Updates and website
 
@@ -249,8 +257,8 @@ straylight/
 │       │   ├── Monitor.swift         # engine results → stats, answered locally, snapshots, events
 │       │   ├── History.swift         # SQLite store, per-minute and hourly aggregates, event log, CSV export
 │       │   ├── Database.swift        # a small wrapper over the system SQLite library
-│       │   ├── WiFi.swift            # CoreWLAN details
-│       │   ├── Diagnostics.swift     # os_log categories, Copy diagnostics
+│       │   ├── HistoryChart.swift    # the popover chart's buckets
+│       │   ├── ProblemSummary.swift  # the worst problem, for the popover header
 │       │   ├── MenuBarText.swift     # menu bar values, marks and trace scaling
 │       │   ├── RingBuffer.swift      # from flatline (see §13)
 │       │   └── Format.swift          # from flatline
@@ -258,13 +266,14 @@ straylight/
 │       └── Tests/StraylightKitTests/
 ├── App/
 │   ├── StraylightApp.swift
-│   ├── AppModel.swift           # runs Monitor and History, pause, menu bar traces
-│   ├── Preferences.swift
-│   ├── VerdictText.swift        # the verdict in words
+│   ├── AppModel.swift           # runs Monitor and History, pause, traces, Wi‑Fi readings
+│   ├── Preferences.swift        # settings and the accent
+│   ├── VerdictText.swift        # the verdict and header line in words, popover number formats
+│   ├── WiFi.swift               # CoreWLAN readings, the Mac's own address for the header
+│   ├── Export.swift             # CSV export with a save panel, Copy diagnostics
 │   ├── DevChecks.swift          # STRAYLIGHT_DEV_LOG: the Wi‑Fi check inside the app
 │   ├── MenuBar/                 # StatusItemController, MenuBarRenderer (STRAYLIGHT_SNAPSHOT=<png> writes each image)
-│   ├── Popover/…
-│   ├── Settings/…
+│   ├── Popover/                 # PopoverView, TargetCards, HistoryCard, DetailCards (Wi‑Fi, events, first run, settings)
 │   └── Resources/
 ├── scripts/                 # release.sh, bump-version.sh (adapted from flatline)
 ├── site/                    # straylight.banast.as
@@ -360,10 +369,22 @@ Not yet run: a real outage (unplugging the router's WAN) and the loss check.
 
 **M5 results (2026-10-28, same Mac).** The app runs the monitor and records history: a 20 s run wrote two measured minutes with 20 probes per target. `STRAYLIGHT_SNAPSHOT` images of the menu bar showed `RTT` over `—` during warm-up, then a trace and `8.9ms`; the both-targets view showed two traces with `R 0.4ms` over `I 6.8ms`; Router in text style showed `0.3ms`. The app now quits cleanly on SIGTERM, so `kill` doesn't lose the history not yet written. Not yet checked: the paused look (it needs a click on the menu), VoiceOver reading the summary, a light menu bar, and the energy budget, which M7 measures.
 
+**M6 results (2026-10-28, same Mac).** `STRAYLIGHT_POPOVER_SNAPSHOT` renders the popover's view in an off-screen window and writes it as a PNG; `STRAYLIGHT_POPOVER_PAGE` and `STRAYLIGHT_POPOVER_RANGE` pick the page and chart range, and `STRAYLIGHT_HOSTS` and `STRAYLIGHT_HISTORY` swap the internet hosts and the database for testing. Checked from snapshots:
+
+- Warm-up: Measuring with `—` in the cards, and the first-run note.
+- Good: router 0.4 ms, 1.1.1.1 and 8.8.8.8 rows, traces, an empty event list.
+- One host that never answers (192.0.2.1): still Good, the host's row reads "No reply since 11:07", loss ticks under its trace. Both hosts dead: Internet down, "Router is fine, but no internet host answers."
+- Paused: "Paused until 12:09" with Resume, cards dimmed. The menu bar's paused look (dimmed trace and value, `‖` at full strength) checked the same run, closing that M5 item.
+- Settings panel, and the Wi‑Fi card from this Mac's secondary Wi‑Fi interface: −57 dBm, noise −87, SNR 30 dB, 286 Mbit/s, 5 GHz channel 100 at 80 MHz.
+- A test database with 26 hours of made-up minutes: the 1 h, 24 h and 7 d charts with median, p95, loss bars, the signal line, a labeled sleep gap, a paused hour and older days shaded as not running; the event list with outages and spikes.
+- Copy diagnostics' text, with the target table and the log lines from `OSLogStore`.
+
+Probes now reach the main thread once per round with the snapshot, rather than one hop per probe. Not yet checked: the real popover opened by a click (snapshots draw the same view off-screen), the right-click menu, Export CSV's save panel, VoiceOver on the popover, Increase Contrast, a light appearance (the phosphor accent may be too faint on white), Offline, a Wi‑Fi path, and the 50 ms first-frame budget.
+
 ## 10. Accessibility and localization
 
 - VoiceOver labels on the status item and on every popover value; lost probes in traces are described in text ("3 lost in the last minute")
-- The popover respects Reduce Motion (traces stop animating) and Increase Contrast
+- The popover respects Reduce Motion and Increase Contrast. Nothing in it animates: traces and the chart redraw in place and the popover opens without animation, so Reduce Motion has nothing to stop. Increase Contrast strengthens card borders, thickens trace and chart lines, and darkens gap shading.
 - Color is never the only signal: the verdict is always in words, and the menu bar uses marks
 - English only for 1.0, with all strings in a String Catalog
 
