@@ -10,9 +10,14 @@ struct TraceSample: Equatable, Sendable {
     var rtt: Double?
 }
 
+/// Why probing runs at the battery interval (PRD §6.2).
+enum SlowRateReason: Equatable {
+    case battery, lowPowerMode, lowDataMode, expensivePath
+}
+
 /// Runs the monitor and the history store, and holds what the menu bar and
-/// popover show. Pausing stops the monitor; resuming starts a fresh one, which
-/// warms up again like any network change.
+/// popover show. Pausing, or the screen locking, stops the monitor; resuming
+/// starts a fresh one, which warms up again like any network change.
 @MainActor
 @Observable
 final class AppModel {
@@ -35,6 +40,10 @@ final class AppModel {
     private(set) var localAddress: String?
     /// Read only while the popover is open, every `wifiInterval`.
     private(set) var wifi: WiFiInfo?
+    /// Turning on a notification setting asked for permission, and it was refused.
+    private(set) var notificationsDenied = false
+    /// Probing stopped because the screen is locked or the displays are asleep.
+    private(set) var isLockPaused = false
     /// The popover is open: Wi‑Fi readings are taken.
     var detailsVisible = false {
         didSet {
@@ -49,6 +58,12 @@ final class AppModel {
 
     @ObservationIgnored private let preferences: Preferences
     @ObservationIgnored private let history: History?
+    @ObservationIgnored private let system = SystemState()
+    @ObservationIgnored let notifier = Notifier()
+    @ObservationIgnored private var alerts = AlertTracker()
+    /// The interval the running monitor was given.
+    @ObservationIgnored private var monitorInterval: Double?
+    @ObservationIgnored private var started = false
     @ObservationIgnored private var monitor: Monitor?
     /// Updates from a stopped monitor can still be on their way to the main queue.
     @ObservationIgnored private var generation = 0
@@ -67,6 +82,10 @@ final class AppModel {
         } catch {
             history = nil
             log.error("history unavailable: \(String(describing: error), privacy: .public)")
+        }
+        system.onChange = { [weak self] in
+            self?.updateRunning()
+            self?.updateInterval()
         }
     }
 
@@ -93,6 +112,20 @@ final class AppModel {
         }
     }
 
+    /// Why the battery interval is in use; nil on power.
+    var slowRateReason: SlowRateReason? {
+        if system.onBattery { return .battery }
+        if system.lowPowerMode { return .lowPowerMode }
+        if snapshot.path.isConstrained { return .lowDataMode }
+        if snapshot.path.isExpensive { return .expensivePath }
+        return nil
+    }
+
+    /// Seconds between probes once warm-up is over.
+    var interval: Double {
+        slowRateReason == nil ? preferences.interval : preferences.batteryInterval
+    }
+
     func start() {
         let wifiInterface = wifiInterface
         history?.start {
@@ -100,18 +133,19 @@ final class AppModel {
             let rssi = interface.rssiValue()
             return rssi == 0 ? nil : rssi
         }
-        startMonitor()
+        started = true
+        applySettings()
+        observePreferences()
     }
 
     /// Stops probing for an hour (PRD §6.6). The minutes are recorded as paused.
     func pause() {
         guard !isPaused else { return }
-        stopMonitor()
-        history?.setState(.paused)
         pausedUntil = Date().addingTimeInterval(Self.pauseDuration)
         resumeTimer = Timer.scheduledTimer(withTimeInterval: Self.pauseDuration, repeats: false) { _ in
             MainActor.assumeIsolated { self.resume() }
         }
+        updateRunning()
         onChange?()
     }
 
@@ -120,12 +154,78 @@ final class AppModel {
         resumeTimer?.invalidate()
         resumeTimer = nil
         pausedUntil = nil
-        startMonitor()
+        updateRunning()
         onChange?()
     }
 
-    func update(interval: Double) {
-        monitor?.update(interval: interval)
+    /// Probing runs unless paused, or locked without "Keep monitoring while
+    /// locked" (PRD §6.2). Stopped minutes are recorded as paused or locked.
+    private func updateRunning() {
+        guard started else { return }
+        let locked = system.isLocked && !preferences.keepMonitoringWhileLocked
+        isLockPaused = locked && !isPaused
+        let state: MinuteState? = isPaused ? .paused : locked ? .locked : nil
+        if let state {
+            if monitor != nil {
+                log.notice("stopped: \(state.rawValue, privacy: .public)")
+                stopMonitor()
+                alerts.reset()
+            }
+            history?.setState(state)
+        } else if monitor == nil {
+            startMonitor()
+        }
+    }
+
+    private func updateInterval() {
+        guard let monitor, interval != monitorInterval else { return }
+        log.notice("interval \(self.interval, privacy: .public) s\(self.slowRateReason.map { " (\($0))" } ?? "", privacy: .public)")
+        monitorInterval = interval
+        monitor.update(interval: interval)
+    }
+
+    // MARK: - Settings
+
+    private func observePreferences() {
+        withObservationTracking {
+            _ = preferences.interval
+            _ = preferences.batteryInterval
+            _ = preferences.targetSettings
+            _ = preferences.keepMonitoringWhileLocked
+            _ = preferences.retentionDays
+            _ = preferences.notifyOutages
+            _ = preferences.notifyVerdictChanges
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.applySettings()
+                self.observePreferences()
+            }
+        }
+    }
+
+    private func applySettings() {
+        history?.retentionDays = preferences.retentionDays
+        monitor?.update(settings: targetSettings)
+        updateRunning()
+        updateInterval()
+
+        let (outages, verdictChanges) = (preferences.notifyOutages, preferences.notifyVerdictChanges)
+        let turnedOn = (outages && !alerts.outages) || (verdictChanges && !alerts.verdictChanges)
+        alerts.outages = outages
+        alerts.verdictChanges = verdictChanges
+        if turnedOn {
+            Task {
+                let granted = await notifier.requestPermission()
+                notificationsDenied = !granted
+                if !granted {
+                    preferences.notifyOutages = false
+                    preferences.notifyVerdictChanges = false
+                }
+            }
+        } else if outages || verdictChanges {
+            notificationsDenied = false
+        }
     }
 
     /// Before quitting: writes everything to disk.
@@ -143,7 +243,8 @@ final class AppModel {
         // Probes wait here and go to the main thread with the snapshot after
         // their round, so the main thread wakes once a round, not per probe.
         let pending = OSAllocatedUnfairLock<[(TargetRole, TraceSample)]>(initialState: [])
-        let monitor = Monitor(settings: Self.targetSettings, interval: preferences.interval) { [weak self] update in
+        monitorInterval = interval
+        let monitor = Monitor(settings: targetSettings, interval: interval) { [weak self] update in
             // History takes everything straight from the engine's queue.
             switch update {
             case .probe(let probe):
@@ -172,11 +273,10 @@ final class AppModel {
         monitor.start()
     }
 
-    /// Target settings arrive in M7. For development, `STRAYLIGHT_HOSTS`
-    /// sets the internet hosts, such as `1.1.1.1,192.0.2.1` for one that
-    /// never answers.
-    private static var targetSettings: TargetSettings {
-        var settings = TargetSettings()
+    /// From settings. For development, `STRAYLIGHT_HOSTS` sets the internet
+    /// hosts, such as `1.1.1.1,192.0.2.1` for one that never answers.
+    private var targetSettings: TargetSettings {
+        var settings = preferences.targetSettings
         if let hosts = ProcessInfo.processInfo.environment["STRAYLIGHT_HOSTS"] {
             settings.internetHosts = hosts.split(separator: ",").map(String.init)
         }
@@ -220,6 +320,11 @@ final class AppModel {
             offlineSince = now
         }
         self.snapshot = snapshot
+        // A Low Data or expensive path probes at the battery interval.
+        updateInterval()
+        for alert in alerts.update(snapshot, now: now) {
+            notifier.post(alert, snapshot: snapshot)
+        }
         readWiFiIfDue()
         onChange?()
     }

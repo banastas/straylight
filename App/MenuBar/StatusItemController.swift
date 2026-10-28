@@ -51,6 +51,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate, NSMenuDelegate {
         }
 
         model.onChange = { [weak self] in self?.redraw() }
+        model.notifier.onOpen = { [weak self] in
+            guard let self, self.popover?.isShown != true else { return }
+            self.togglePopover(settings: false)
+        }
         observePreferences()
         redraw()
         if let path = Self.popoverSnapshotPath { schedulePopoverSnapshot(to: path) }
@@ -67,8 +71,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate, NSMenuDelegate {
 
     private func redraw() {
         guard let button = statusItem.button else { return }
-        // Once per round of probes, so cheap enough to refresh every time.
-        let label = MenuBarRenderer.accessibilityLabel(model: model)
+        // The spoken summary costs as much as drawing, so it's only built
+        // while VoiceOver is running; otherwise the item is just named.
+        let label = NSWorkspace.shared.isVoiceOverEnabled
+            ? MenuBarRenderer.accessibilityLabel(model: model)
+            : "straylight"
         if label != lastAccessibilityLabel {
             lastAccessibilityLabel = label
             button.setAccessibilityLabel(label)
@@ -101,11 +108,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate, NSMenuDelegate {
         withObservationTracking {
             _ = preferences.displayStyle
             _ = preferences.menuBarTarget
-            _ = preferences.interval
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
-                self.model.update(interval: self.preferences.interval)
                 self.redraw()
                 self.observePreferences()
             }

@@ -11,6 +11,8 @@
 //   straylight-probe --monitor 120 -i 5      stats, states and the verdict after each round
 //   straylight-probe --monitor 600 --history /tmp/h.sqlite   also record history there
 //   straylight-probe --export /tmp/h.sqlite 30               CSV of the last 30 minutes
+//   straylight-probe --tune ~/Library/Application\ Support/straylight/history.sqlite 7
+//                                             how the Bad thresholds fired over the last 7 days
 
 import Darwin
 import Dispatch
@@ -29,6 +31,7 @@ struct Options {
     var monitor: Double?
     var history: String?
     var export: String?
+    var tune: String?
     var hosts: [String]?
 
     init(_ arguments: [String]) {
@@ -46,6 +49,7 @@ struct Options {
             case "--monitor": monitor = arguments.popFirst().flatMap(Double.init) ?? 60
             case "--history": history = arguments.popFirst()
             case "--export": export = arguments.popFirst()
+            case "--tune": tune = arguments.popFirst()
             default: host = argument
             }
         }
@@ -122,6 +126,14 @@ if let path = options.export {
     let start = Date().addingTimeInterval(-minutes * 60)
     print(try history.exportAggregates(from: start, to: Date()), terminator: "")
     print(try history.exportEvents(from: start, to: Date()), terminator: "")
+    exit(0)
+}
+
+if let path = options.tune {
+    // Per-minute detail is kept for 7 days.
+    let days = Double(options.host) ?? 7
+    let history = try History(url: URL(filePath: path))
+    print(ThresholdReport(try history.aggregates(from: Date().addingTimeInterval(-days * 86_400), to: Date())).text, terminator: "")
     exit(0)
 }
 

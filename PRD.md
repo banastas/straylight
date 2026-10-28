@@ -75,12 +75,12 @@ straylight is an always-on trace to the router and the internet in the menu bar,
 | Matching replies | The IPv4 socket sees every ICMP packet for the Mac, including replies to other apps' pings. Replies are matched on sequence number, a random 8-byte token in the payload, and source address. xnu doesn't rewrite the identifier, but matching doesn't rely on it. |
 | Timing | Send time from `mach_absolute_time()` just before `sendto`; receive time from the kernel via `SO_TIMESTAMP_MONOTONIC`, so a slow wake-up in the app doesn't inflate the RTT. Both use the same clock: xnu stamps `SO_TIMESTAMP_MONOTONIC` with `mach_absolute_time()` (`ip_savecontrol`, `ip6_savecontrol`), which pauses during sleep. Pairing it with `mach_continuous_time()` would have added the total sleep since boot to every RTT. |
 | Payload | 56 bytes, like `ping` |
-| Rate | 1 probe per second per target on power; 1 per 5 s on battery (both configurable). The battery rate also applies in Low Power Mode and when the path is constrained (Low Data Mode) or expensive (e.g. an iPhone hotspot). Warm-up (§6.1) and fast recheck (below) temporarily probe at 1 s. |
+| Rate | 1 probe per second per target on power; 1 per 5 s on battery (both configurable). The battery rate also applies in Low Power Mode and when the path is constrained (Low Data Mode) or expensive (e.g. an iPhone hotspot). The power source comes from IOKit's power-source notifications and Low Power Mode from `NSProcessInfoPowerStateDidChange`; a change applies to the running monitor without a warm-up. Warm-up (§6.1) and fast recheck (below) temporarily probe at 1 s. |
 | Fast recheck | When a probe is lost and the interval is longer than 1 s, that target is probed every second until 3 replies in a row arrive, then returns to its normal rate. Outages are caught at the same speed on battery as on power. |
 | Timeout | No reply within 2 s counts as lost. A reply after the timeout is logged as late, not counted as received. |
 | Fallback | During warm-up, if an internet host answers no ICMP while the router does, straylight tries a TCP connect to that host on port 443 (non-blocking `connect`, time to SYN-ACK, close immediately). Only if TCP succeeds does that host switch to TCP connect timing, labeled "TCP". ICMP failing on its own never triggers the switch: with TCP failing too, it's an outage. In TCP mode, one ICMP probe is still sent per minute; after 3 ICMP replies in a row, the host switches back. |
 | Network changes | Probes in flight when the path changes (Wi‑Fi ↔ Ethernet, VPN up/down, sleep/wake) are discarded, not counted as lost. Probing restarts with warm-up after targets are re-resolved. A wake is noticed without AppKit: the gap between `mach_continuous_time()` and `mach_absolute_time()` grows only across a sleep. |
-| Pauses | No probes while the screen is locked or the display is asleep, unless "Keep monitoring while locked" is on (for overnight logging). No probes while paused from the menu (§6.6). With no network path, probing stops and the verdict is Offline. |
+| Pauses | No probes while the screen is locked or the display is asleep, unless "Keep monitoring while locked" is on (for overnight logging). Locking is read from the `com.apple.screenIsLocked` and `com.apple.screenIsUnlocked` distributed notifications, and display sleep from `NSWorkspace`; the minutes are recorded as locked, and probing restarts with warm-up on unlock. No probes while paused from the menu (§6.6); a pause wins over a lock. With no network path, probing stops and the verdict is Offline. |
 
 ### 6.3 Metrics and verdict
 
@@ -112,7 +112,7 @@ Each target is **OK**, **Bad** (any threshold below crossed), or **Down** (an ou
 
 Custom targets have their own cards, events and history, and never affect the verdict.
 
-Starting thresholds for "Bad" (to be tuned in M7 against a week of real Wi‑Fi and Ethernet history, since Wi‑Fi power saving makes router RTTs noisy). Loss is a count so it means the same thing at every probe rate:
+Starting thresholds for "Bad" (to be tuned against a week of real Wi‑Fi and Ethernet history, since Wi‑Fi power saving makes router RTTs noisy; `straylight-probe --tune <history.sqlite> 7` reports each target's per-minute p95, jitter and loss and how often each threshold would have fired). Loss is a count so it means the same thing at every probe rate:
 
 | | Loss | Jitter | p95 RTT |
 |---|---|---|---|
@@ -189,11 +189,16 @@ On first launch the popover opens once with a short note: what straylight sends 
 - **Outage**: when an outage to the internet lasts 10 s, and again when it ends, with its duration.
 - **Verdict changes** that hold for at least 30 s.
 
-Both are off by default.
+Both are off by default. Details settled in M7:
+
+- The outage alert fires when every internet host that counts is Down, timed from when the last one went down. It names the hosts and adds when the router isn't answering either. "Internet back" gives how long it was down. Warm-up after a network change doesn't end an outage; the next measured state does.
+- The verdict that first holds after launch is the starting point and isn't posted. Measuring in between (a network change) isn't a change. While an outage alert stands, the down verdict isn't posted as well, and nor is the return to Good after "Internet back".
+- Pausing or locking forgets an outage in progress without an "Internet back".
+- Permission is asked when a notification setting is first turned on. If it's refused, both settings turn off and the panel says notifications are off in System Settings. Clicking a notification opens the popover.
 
 ### 6.10 Settings
 
-Shown in the popover (an inline settings panel, as in flatline), stored in `UserDefaults`. Since M6 the panel has the menu bar target and style, the probe interval on power, the accent and Launch at login; M7 adds the rest.
+Shown in the popover (an inline settings panel, as in flatline), stored in `UserDefaults`. Since M7 the panel has everything below except automatic updates, which arrive with Sparkle (M9). Changes apply at once: target changes re-plan and warm up like a network change, and a typed host applies on Return or when its field loses focus, so targets aren't re-resolved on every keystroke. A secondary host the same as the primary is left out. When the battery interval is in use, the panel says why (on battery, Low Power Mode, Low Data Mode, or a hotspot or metered network).
 
 | Setting | Options | Default |
 |---|---|---|
@@ -259,6 +264,8 @@ straylight/
 │       │   ├── Database.swift        # a small wrapper over the system SQLite library
 │       │   ├── HistoryChart.swift    # the popover chart's buckets
 │       │   ├── ProblemSummary.swift  # the worst problem, for the popover header
+│       │   ├── Alerts.swift          # when to notify: outages and verdict changes
+│       │   ├── ThresholdReport.swift # how the Bad thresholds fired over history, for tuning
 │       │   ├── MenuBarText.swift     # menu bar values, marks and trace scaling
 │       │   ├── RingBuffer.swift      # from flatline (see §13)
 │       │   └── Format.swift          # from flatline
@@ -266,14 +273,16 @@ straylight/
 │       └── Tests/StraylightKitTests/
 ├── App/
 │   ├── StraylightApp.swift
-│   ├── AppModel.swift           # runs Monitor and History, pause, traces, Wi‑Fi readings
+│   ├── AppModel.swift           # runs Monitor and History, pause and lock, the probe rate, traces, Wi‑Fi readings
 │   ├── Preferences.swift        # settings and the accent
+│   ├── SystemState.swift        # battery, Low Power Mode, screen lock and display sleep
+│   ├── Notifier.swift           # posts the notifications
 │   ├── VerdictText.swift        # the verdict and header line in words, popover number formats
 │   ├── WiFi.swift               # CoreWLAN readings, the Mac's own address for the header
 │   ├── Export.swift             # CSV export with a save panel, Copy diagnostics
 │   ├── DevChecks.swift          # STRAYLIGHT_DEV_LOG: the Wi‑Fi check inside the app
 │   ├── MenuBar/                 # StatusItemController, MenuBarRenderer (STRAYLIGHT_SNAPSHOT=<png> writes each image)
-│   ├── Popover/                 # PopoverView, TargetCards, HistoryCard, DetailCards (Wi‑Fi, events, first run, settings)
+│   ├── Popover/                 # PopoverView, TargetCards, HistoryCard, DetailCards (Wi‑Fi, events, first run), SettingsView
 │   └── Resources/
 ├── scripts/                 # release.sh, bump-version.sh (adapted from flatline)
 ├── site/                    # straylight.banast.as
@@ -288,6 +297,7 @@ Tests cover:
 - every row of the §6.3 verdict table, two-host combining and "answered locally"
 - reply matching when the kernel rewrites identifiers
 - the fallback: ICMP blocked with TCP working switches to TCP; ICMP and TCP both failing is an outage and doesn't switch
+- when notifications fire: the 10 s outage delay, the 30 s verdict hold, and an outage alert covering its verdicts
 - discarding probes across a simulated path change
 - history minute states and the CSV columns
 - a real probe to `127.0.0.1`
@@ -300,7 +310,7 @@ Tests cover:
 - All socket work runs on one serial queue. The `@Observable` snapshot on the main actor is updated at most once per tick: `Monitor` publishes one 0.25 s after each round of probes, once most replies are in, and one after each network change.
 - Each target keeps its own due time, so on 1 s ticks (warm-up, or another target in fast recheck) a 5 s target is still probed every 5 s. A fast recheck carries on past the end of warm-up.
 - History is appended in memory and flushed to disk once a minute.
-- **App Nap** could stretch the send timer. RTTs wouldn't be affected, because both timestamps are taken at the socket, but probe spacing would. M1 checked this (2026-10-28): over 10 minutes in the background, a 1 s timer with 10 % leeway fired 600 times, 958–1074 ms apart (median 1000.0 ms, p99 1039 ms), never past the leeway. No `ProcessInfo` activity is needed. Recheck on battery in M7.
+- **App Nap** could stretch the send timer. RTTs wouldn't be affected, because both timestamps are taken at the socket, but probe spacing would. M1 checked this (2026-10-28): over 10 minutes in the background, a 1 s timer with 10 % leeway fired 600 times, 958–1074 ms apart (median 1000.0 ms, p99 1039 ms), never past the leeway. No `ProcessInfo` activity is needed. Still to recheck on battery, on a Mac that has one.
 
 **Battery:** Wi‑Fi radios save power by sleeping between beacons, and a probe every second keeps waking them. That's why the battery default is 5 s and probing stops while the screen is locked. Energy impact on battery is measured in M7 against flatline.
 
@@ -380,6 +390,16 @@ Not yet run: a real outage (unplugging the router's WAN) and the loss check.
 - Copy diagnostics' text, with the target table and the log lines from `OSLogStore`.
 
 Probes now reach the main thread once per round with the snapshot, rather than one hop per probe. Not yet checked: the real popover opened by a click (snapshots draw the same view off-screen), the right-click menu, Export CSV's save panel, VoiceOver on the popover, Increase Contrast, a light appearance (the phosphor accent may be too faint on white), Offline, a Wi‑Fi path, and the 50 ms first-frame budget.
+
+**M7 results (2026-10-28, same Mac, a desktop on AC power).** All §6.10 settings except automatic updates are in the panel and persist; the Kit has 107 passing tests, including the notification rules and the threshold report. Checked:
+
+- `STRAYLIGHT_ON_BATTERY=1`: the monitor runs at the 5 s battery interval, the panel says "On battery now, so probing every 5s", and Copy diagnostics shows `probing interval=5.0s (battery)`.
+- `STRAYLIGHT_LOCK_TEST=10,150` with a test database: probing stopped 10 s in ("stopped: locked" in the log), three full minutes were stored as locked, and after the unlock the monitor warmed up again and the next minute was measured with 14 probes per target. A lock during warm-up drops that warm-up's probes, as the warm-up rule already does.
+- Energy, release build, popover closed, 1 s interval, router and two hosts on Ethernet, over 3 minutes with `top`: straylight 0.16 % of one core and Energy Impact 0.16, 13 MB resident; flatline 0.07 % and 0.07, 34 MB. Before the fix below it was 0.23 %. Memory is within budget; CPU is over the 0.1 % budget, so §8 isn't met yet. `sample` puts the rest in sending and receiving probes, applying each snapshot on the main thread, and Core Animation copying each new menu bar image, which flatline also pays.
+- Fixed: the menu bar's spoken summary was rebuilt every second with localized string formatting, as much work as drawing the image. It's now built only while VoiceOver is running; otherwise the item is named "straylight".
+- `straylight-probe --tune` over the 147 real minutes so far (Ethernet only): router p95 0.8 / 7.6 / 32 ms at p50 / p95 / p99 and 1.4 % of minutes Bad; 1.1.1.1 0.7 % Bad; 8.8.8.8 1.4 % Bad, all from the made-up outages and spikes of earlier tests. The thresholds stay as they are until there's a week of Wi‑Fi and Ethernet history.
+
+Not yet checked: real notifications (they need the permission prompt answered), a real screen lock and display sleep, Low Power Mode, a Low Data or hotspot path, the App Nap recheck and energy on battery (this Mac has none), and the threshold tuning, which waits for a week of history.
 
 ## 10. Accessibility and localization
 

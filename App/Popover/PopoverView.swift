@@ -49,7 +49,7 @@ struct PopoverView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     if state.showingSettings {
-                        SettingsView(preferences: preferences)
+                        SettingsView(preferences: preferences, model: model)
                     } else {
                         if state.showingFirstRun {
                             FirstRunCard(dismiss: actions.dismissFirstRun)

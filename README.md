@@ -6,7 +6,7 @@ A small menu bar app for Apple Silicon Macs that shows how good your connection 
 
 straylight is a sibling to [flatline](https://github.com/banastas/flatline). flatline shows how much traffic is moving; straylight shows its quality. It follows the same rules: one narrow job, Apple Silicon and macOS 27 only, no root helper, and close to zero cost when idle.
 
-**Status:** in development. The measuring, history, menu bar and popover work; the full settings, battery rates and notifications come next. See the [PRD](PRD.md).
+**Status:** in development. The measuring, history, menu bar, popover, settings, battery rates and notifications work; signed releases and updates come next. See the [PRD](PRD.md).
 
 ## Features (planned for 1.0)
 
@@ -56,9 +56,9 @@ swift test --package-path Packages/StraylightKit
 swift run --package-path Packages/StraylightKit -c release straylight-probe -c 60 1.1.1.1
 ```
 
-`--monitor 120` runs the whole measuring pipeline for two minutes and prints the verdict and each target's stats after every round. Add `--history file.sqlite` to record history there, and `--export file.sqlite 30` prints the CSV for the last 30 minutes. Its source lists the other options.
+`--monitor 120` runs the whole measuring pipeline for two minutes and prints the verdict and each target's stats after every round. Add `--history file.sqlite` to record history there, and `--export file.sqlite 30` prints the CSV for the last 30 minutes. `--tune file.sqlite 7` shows how often each "Bad" threshold would have fired over the last 7 days, for tuning them. Its source lists the other options.
 
-The app reads a few environment variables for checking its drawing without clicking: `STRAYLIGHT_SNAPSHOT=bar.png` writes each menu bar image, `STRAYLIGHT_POPOVER_SNAPSHOT=popover.png` writes the popover after 15 seconds (`STRAYLIGHT_POPOVER_PAGE=settings`, `first-run`, `paused` or `wifi` picks what it shows), `STRAYLIGHT_HISTORY=test.sqlite` uses another history database, and `STRAYLIGHT_HOSTS=1.1.1.1,192.0.2.1` sets the internet hosts. The comments in `StatusItemController.swift` and `AppModel.swift` list the rest.
+The app reads a few environment variables for checking its drawing without clicking: `STRAYLIGHT_SNAPSHOT=bar.png` writes each menu bar image, `STRAYLIGHT_POPOVER_SNAPSHOT=popover.png` writes the popover after 15 seconds (`STRAYLIGHT_POPOVER_PAGE=settings`, `first-run`, `paused` or `wifi` picks what it shows), `STRAYLIGHT_HISTORY=test.sqlite` uses another history database, `STRAYLIGHT_HOSTS=1.1.1.1,192.0.2.1` sets the internet hosts, `STRAYLIGHT_ON_BATTERY=1` acts as if on battery, and `STRAYLIGHT_LOCK_TEST=10,40` acts as if the screen locked at 10 s and unlocked at 40 s. The comments in `StatusItemController.swift`, `AppModel.swift` and `SystemState.swift` list the rest.
 
 Debug builds are ad-hoc signed and run on any Mac. Release builds are signed with the maintainer's Developer ID.
 
