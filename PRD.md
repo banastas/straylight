@@ -146,16 +146,16 @@ When the primary interface is Wi‑Fi, CoreWLAN (`CWWiFiClient.shared().interfac
 
 ### 6.6 Menu bar
 
-- A single `NSStatusItem`, monochrome in the menu bar's label color, fixed width. The width fits the widest value: `999ms`. Longer RTTs are shown in seconds (`1.2s`). `—` while warming up or with no data.
+- A single `NSStatusItem`, monochrome in the menu bar's label color, fixed width. The width fits the widest value: `999ms`, and depends only on the style and target, so it never jumps. Under 10 ms the value has one decimal (`5.4ms`); longer RTTs are shown in seconds (`1.2s`). `—` while warming up, while the target is down, or with no data. The value is the latest reply.
 - **Display styles**:
   - `text`: label stacked above value (`RTT` / `23ms`; the label reads `TCP` in TCP mode)
-  - `trace`: an RTT trace of recent history. A lost probe drops the line to the baseline, so a dead connection literally flatlines.
+  - `trace`: an RTT trace of the last 28 probes, one per pixel. A lost probe drops the line to the baseline, so a dead connection literally flatlines. A new trace grows from the right instead of starting flat. Replies scale to the highest RTT shown, but never below 2 ms for the router or 10 ms for the internet, so small jitter stays small.
   - `text+trace`
-- **Target shown**: Internet (default), Router, or both as two short stacked traces.
-- The verdict is shown as a mark, not a color: nothing when Good, `!` for a problem, `×` for down or Offline, `‖` while paused.
-- Click opens the popover. Right-click or Control-click opens a small menu: Open, Pause for 1 hour, Settings, Check for Updates, Quit.
-- **Pause for 1 hour** stops all probes. The trace freezes and dims, the mark shows `‖`, and the menu item becomes "Resume". Probing restarts after an hour, on Resume, or on Quit and relaunch. Paused minutes are recorded as paused.
-- VoiceOver reads a summary such as "Good. Internet 23 milliseconds, jitter 4, loss 0 percent. Router 3 milliseconds."
+- **Target shown**: Internet (default), Router, or both as two short stacked traces, with the values stacked as `R 0.4ms` over `I 6.8ms`.
+- The verdict is shown as a mark, not a color: nothing when Good or measuring, `!` for a problem (including Can't measure the internet), `×` for down or Offline, `‖` while paused. Marks are drawn as shapes, not text, and the mark's space is always reserved.
+- Click opens the popover. Right-click or Control-click opens a small menu: Open, Pause for 1 hour, Settings, Check for Updates, Quit. Until the popover exists (M6), any click opens the menu, headed by the verdict; Open and Settings arrive with the popover and Check for Updates with Sparkle (M9).
+- **Pause for 1 hour** stops all probes. The trace and value freeze and dim, the mark shows `‖` at full strength, and the menu item becomes "Resume". Resuming starts with warm-up, like a network change. Probing restarts after an hour, on Resume, or on Quit and relaunch. Paused minutes are recorded as paused.
+- VoiceOver reads a summary such as "Good. Internet 23 milliseconds, jitter 4, loss 0 percent. Router 3 milliseconds." While paused: "Paused until 14:32."
 
 ### 6.7 Popover
 
@@ -251,15 +251,18 @@ straylight/
 │       │   ├── Database.swift        # a small wrapper over the system SQLite library
 │       │   ├── WiFi.swift            # CoreWLAN details
 │       │   ├── Diagnostics.swift     # os_log categories, Copy diagnostics
+│       │   ├── MenuBarText.swift     # menu bar values, marks and trace scaling
 │       │   ├── RingBuffer.swift      # from flatline (see §13)
 │       │   └── Format.swift          # from flatline
 │       ├── Sources/straylight-probe/ # dev CLI for checking probes against ping; not shipped
 │       └── Tests/StraylightKitTests/
 ├── App/
 │   ├── StraylightApp.swift
-│   ├── DevChecks.swift          # STRAYLIGHT_DEV_LOG: Wi‑Fi and timer checks inside the app
-│   ├── StatusItemController.swift
-│   ├── MenuBarRenderer.swift
+│   ├── AppModel.swift           # runs Monitor and History, pause, menu bar traces
+│   ├── Preferences.swift
+│   ├── VerdictText.swift        # the verdict in words
+│   ├── DevChecks.swift          # STRAYLIGHT_DEV_LOG: the Wi‑Fi check inside the app
+│   ├── MenuBar/                 # StatusItemController, MenuBarRenderer (STRAYLIGHT_SNAPSHOT=<png> writes each image)
 │   ├── Popover/…
 │   ├── Settings/…
 │   └── Resources/
@@ -354,6 +357,8 @@ The minimums to 1.1.1.1 agree within 0.02 ms, and `ping` times the same way stra
 Not yet run: a real outage (unplugging the router's WAN) and the loss check.
 
 **M4 results (2026-10-28, same Mac).** `straylight-probe --monitor 150 --history` recorded 2.5 minutes, and `--export` produced the CSV. The first minute had 25 probes per target, warm-up included (the run started 25 s before its end), the next two had 60, and the minutes before the run were exported as `not_running`. Rollups, retention, minute states, sleep marking, restarts within a minute and both CSV formats are covered by unit tests against an in-memory database. Not yet tried on a real sleep. The app doesn't record history yet: it gets the monitor in M5.
+
+**M5 results (2026-10-28, same Mac).** The app runs the monitor and records history: a 20 s run wrote two measured minutes with 20 probes per target. `STRAYLIGHT_SNAPSHOT` images of the menu bar showed `RTT` over `—` during warm-up, then a trace and `8.9ms`; the both-targets view showed two traces with `R 0.4ms` over `I 6.8ms`; Router in text style showed `0.3ms`. The app now quits cleanly on SIGTERM, so `kill` doesn't lose the history not yet written. Not yet checked: the paused look (it needs a click on the menu), VoiceOver reading the summary, a light menu bar, and the energy budget, which M7 measures.
 
 ## 10. Accessibility and localization
 

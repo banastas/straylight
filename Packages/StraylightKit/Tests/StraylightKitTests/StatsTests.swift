@@ -450,3 +450,29 @@ import Testing
         #expect(!tracker.isRechecking)
     }
 }
+
+@Suite struct MenuBarTextTests {
+    @Test(arguments: [
+        (Double?.none, "—"), (0.42, "0.4ms"), (5.44, "5.4ms"), (9.96, "10ms"), (23.4, "23ms"),
+        (999.4, "999ms"), (999.6, "1.0s"), (1234, "1.2s"), (12_000, "12s"), (-1, "—"),
+    ])
+    func rtt(milliseconds: Double?, text: String) {
+        #expect(MenuBarText.rtt(milliseconds) == text)
+        #expect(text.count <= MenuBarText.widestRTT.count)
+    }
+
+    @Test func marks() {
+        #expect(MenuBarText.mark(for: .good, paused: false) == "")
+        #expect(MenuBarText.mark(for: .measuring, paused: false) == "")
+        #expect(MenuBarText.mark(for: .internetProblem, paused: false) == "!")
+        #expect(MenuBarText.mark(for: .localDown, paused: false) == "×")
+        #expect(MenuBarText.mark(for: .offline, paused: false) == "×")
+        #expect(MenuBarText.mark(for: .offline, paused: true) == "‖")
+    }
+
+    @Test func trace() {
+        #expect(MenuBarText.trace([10, nil, 20], floor: 5) == [0.5, 0, 1])
+        #expect(MenuBarText.trace([1, 2], floor: 8) == [0.125, 0.25])
+        #expect(MenuBarText.trace([nil, nil], floor: 8) == [0, 0])
+    }
+}

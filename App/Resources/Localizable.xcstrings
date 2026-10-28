@@ -1,12 +1,22 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "Quit straylight" : {
-
-    },
-    "straylight: not measuring yet" : {
-
-    }
+    "Can't measure the internet" : {},
+    "Connection down" : {},
+    "Connection problem" : {},
+    "Good" : {},
+    "Internet %@ milliseconds, jitter %@, loss %lld percent." : {},
+    "Internet down" : {},
+    "Internet problem" : {},
+    "Local network down" : {},
+    "Local network problem" : {},
+    "Measuring" : {},
+    "Offline" : {},
+    "Pause for 1 Hour" : {},
+    "Paused until %@." : {},
+    "Quit straylight" : {},
+    "Resume" : {},
+    "Router %@ milliseconds." : {}
   },
   "version" : "1.0"
 }
