@@ -1,0 +1,61 @@
+name: Straylight
+
+options:
+  bundleIdPrefix: as.banast
+  deploymentTarget:
+    macOS: "27.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    ARCHS: arm64
+    ONLY_ACTIVE_ARCH: NO
+    MACOSX_DEPLOYMENT_TARGET: "27.0"
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+    ENABLE_HARDENED_RUNTIME: YES
+    ENABLE_APP_SANDBOX: NO
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: F87BNUZAVJ
+    DEAD_CODE_STRIPPING: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+    SWIFT_EMIT_LOC_STRINGS: YES
+  configs:
+    # Local builds stay ad-hoc signed so they work on any machine.
+    Debug:
+      CODE_SIGN_IDENTITY: "-"
+    # Releases are notarized, which needs Developer ID plus a secure timestamp.
+    Release:
+      CODE_SIGN_IDENTITY: Developer ID Application
+      OTHER_CODE_SIGN_FLAGS: --timestamp
+
+packages:
+  StraylightKit:
+    path: Packages/StraylightKit
+
+targets:
+  Straylight:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+    dependencies:
+      - package: StraylightKit
+    info:
+      path: App/Support/Info.plist
+      properties:
+        CFBundleName: straylight
+        CFBundleDisplayName: straylight
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSApplicationCategoryType: public.app-category.utilities
+        LSUIElement: true
+        NSHumanReadableCopyright: © 2026 Bill Anastas
+    settings:
+      base:
+        PRODUCT_NAME: straylight
+        PRODUCT_BUNDLE_IDENTIFIER: as.banast.straylight
+        GENERATE_INFOPLIST_FILE: NO

@@ -34,6 +34,24 @@ straylight sends small ping packets (56 bytes) to the targets you choose: your r
 
 Not released yet. When it is, downloads will be at **[straylight.banast.as](https://straylight.banast.as)**.
 
+## Building from source
+
+Requires Xcode 27+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+
+```bash
+brew install xcodegen
+xcodegen generate
+open Straylight.xcodeproj
+```
+
+Unit tests run without Xcode:
+
+```bash
+swift test --package-path Packages/StraylightKit
+```
+
+Debug builds are ad-hoc signed and run on any Mac. Release builds are signed with the maintainer's Developer ID.
+
 ## License
 
 MIT. The license file will be added with the first code.
