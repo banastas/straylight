@@ -405,6 +405,8 @@ Probes now reach the main thread once per round with the snapshot, rather than o
 
 Not yet checked: real notifications (they need the permission prompt answered), a real screen lock and display sleep, Low Power Mode, a Low Data or hotspot path, the App Nap recheck and energy on battery (this Mac has none), and the threshold tuning, which waits for a week of history.
 
+**M8 results (2026-10-28).** `scripts/release.sh` is adapted from flatline's, without the Sparkle steps (M9): it checks for the Developer ID certificate and the CHANGELOG.md section, runs the StraylightKit tests, archives and exports for Developer ID, verifies the signature (Developer ID, team F87BNUZAVJ, hardened runtime, secure timestamp, arm64 only, an icon present), then notarizes and staples the app, builds an APFS DMG with an Applications link, signs, notarizes and staples it, checks both with `spctl`, and keeps a copy with its notes in `releases/`. `scripts/bump-version.sh` sets the version and raises the build number. The app icon is an Icon Composer file in flatline's style: a phosphor dot with three arcs, the outer one fading, over a faint grid. The dry run (`--skip-notarize`) produced a signed 3.7 MB DMG that mounts with the app and the Applications link. Not yet run: notarization, which uploads the build to Apple.
+
 ## 10. Accessibility and localization
 
 - VoiceOver labels on the status item and on every popover value; lost probes in traces are described in text ("3 lost in the last minute")

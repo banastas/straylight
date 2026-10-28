@@ -1,0 +1,38 @@
+{
+  "fill" : {
+    "automatic-gradient" : "extended-srgb:0.03000,0.07000,0.05000,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "waves.svg",
+          "name" : "waves"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
+    },
+    {
+      "layers" : [
+        {
+          "glass" : false,
+          "image-name" : "grid.svg",
+          "name" : "grid"
+        }
+      ]
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}

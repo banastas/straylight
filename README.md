@@ -60,8 +60,8 @@ swift run --package-path Packages/StraylightKit -c release straylight-probe -c 6
 
 The app reads a few environment variables for checking its drawing without clicking: `STRAYLIGHT_SNAPSHOT=bar.png` writes each menu bar image, `STRAYLIGHT_POPOVER_SNAPSHOT=popover.png` writes the popover after 15 seconds (`STRAYLIGHT_POPOVER_PAGE=settings`, `first-run`, `paused` or `wifi` picks what it shows), `STRAYLIGHT_HISTORY=test.sqlite` uses another history database, `STRAYLIGHT_HOSTS=1.1.1.1,192.0.2.1` sets the internet hosts, `STRAYLIGHT_ON_BATTERY=1` acts as if on battery, and `STRAYLIGHT_LOCK_TEST=10,40` acts as if the screen locked at 10 s and unlocked at 40 s. The comments in `StatusItemController.swift`, `AppModel.swift` and `SystemState.swift` list the rest.
 
-Debug builds are ad-hoc signed and run on any Mac. Release builds are signed with the maintainer's Developer ID.
+Debug builds are ad-hoc signed and run on any Mac. Release builds are signed with the maintainer's Developer ID: `scripts/release.sh` tests, archives, signs, notarizes and staples the app and a DMG in `dist/` (`--skip-notarize` for a dry run), and `scripts/bump-version.sh 0.2.0` sets the next version.
 
 ## License
 
-MIT. The license file will be added with the first code.
+MIT. See [LICENSE](LICENSE).
