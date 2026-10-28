@@ -29,7 +29,9 @@ public final class ICMPProber: @unchecked Sendable {
         for socket in sockets.values { socket.source.cancel() }
     }
 
-    public func send(to address: ProbeAddress) throws {
+    /// Returns the probe's sequence number, which its result carries.
+    @discardableResult
+    public func send(to address: ProbeAddress) throws -> UInt16 {
         dispatchPrecondition(condition: .onQueue(queue))
         let socket = try socket(for: address.family)
         let sequence = nextSequence
@@ -43,6 +45,7 @@ public final class ICMPProber: @unchecked Sendable {
         }
         guard sent == packet.count else { throw ProbeError.send(errno: errno) }
         pending.add(.init(address: address, sequence: sequence, token: token, sentAt: sentAt))
+        return sequence
     }
 
     /// Reports probes past the timeout as lost. Replies already waiting in the

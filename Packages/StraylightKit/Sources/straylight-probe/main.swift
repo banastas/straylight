@@ -5,6 +5,9 @@
 //   straylight-probe -c 20 -i 0.5 192.168.1.1
 //   straylight-probe --tcp 1.1.1.1            TCP connect timing to port 443
 //   straylight-probe --ttl 1 1.1.1.1          does Time Exceeded reach an unprivileged socket?
+//   straylight-probe --path                   the network path and the targets planned for it
+//   straylight-probe --watch 120              run the probe engine and print its events
+//   straylight-probe --watch 30 --hosts github.com,8.8.8.8   with other internet hosts
 
 import Darwin
 import Dispatch
@@ -18,6 +21,9 @@ struct Options {
     var tcp = false
     var port: UInt16 = 443
     var ttl: Int32?
+    var showPath = false
+    var watch: Double?
+    var hosts: [String]?
 
     init(_ arguments: [String]) {
         var arguments = arguments[...]
@@ -28,6 +34,9 @@ struct Options {
             case "--tcp": tcp = true
             case "--port": port = arguments.popFirst().flatMap(UInt16.init) ?? port
             case "--ttl": ttl = arguments.popFirst().flatMap(Int32.init)
+            case "--path": showPath = true
+            case "--hosts": hosts = arguments.popFirst()?.split(separator: ",").map(String.init)
+            case "--watch": watch = arguments.popFirst().flatMap(Double.init) ?? 60
             default: host = argument
             }
         }
@@ -35,8 +44,66 @@ struct Options {
 }
 
 let options = Options(Array(CommandLine.arguments.dropFirst()))
+
+// MARK: - Path and engine (PRD §6.1, §7.3)
+
+func describe(_ path: NetworkPath) -> String {
+    [
+        "satisfied=\(path.isSatisfied)",
+        "primary=\(path.primaryInterface ?? "none")",
+        "physical=\(path.physicalInterface ?? "none")",
+        "kind=\(path.kind)",
+        "vpn=\(path.isVPN)",
+        "ipv4=\(path.hasIPv4)",
+        "ipv6=\(path.hasIPv6)",
+        "router4=\(path.routerIPv4?.description ?? "none")",
+        "router6=\(path.routerIPv6?.description ?? "none")",
+        "expensive=\(path.isExpensive)",
+        "constrained=\(path.isConstrained)",
+    ].joined(separator: " ")
+}
+
+if options.showPath {
+    let path = PathMonitor.current()
+    print(describe(path))
+    for target in TargetPlan.targets(for: path, settings: TargetSettings()) {
+        print("  \(target.role): \(target.host) → \(target.address)")
+    }
+    exit(0)
+}
+
+if let seconds = options.watch {
+    let started = Date()
+    var settings = TargetSettings()
+    if let hosts = options.hosts { settings.internetHosts = hosts }
+    let engine = ProbeEngine(settings: settings, interval: options.interval) { event in
+        let time = String(format: "%7.2f", Date().timeIntervalSince(started))
+        switch event {
+        case .targets(let path, let targets):
+            print("\(time) path \(describe(path))")
+            for target in targets { print("\(time)   target \(target.role) \(target.address)") }
+        case .status(let role, let status):
+            print("\(time) status \(role) \(status)")
+        case .result(let role, let probeProtocol, let result):
+            let outcome = switch result.outcome {
+            case .reply(let milliseconds): String(format: "%.3f ms", milliseconds)
+            case .lost: "lost"
+            case .late(let milliseconds): String(format: "late %.3f ms", milliseconds)
+            }
+            print("\(time) result \(role) \(probeProtocol) \(outcome)")
+        }
+    }
+    engine.start()
+    DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+        engine.stop()
+        exit(0)
+    }
+    dispatchMain()
+}
+
 guard !options.host.isEmpty, let target = ProbeAddress.resolve(options.host).first else {
     print("usage: straylight-probe [-c count] [-i seconds] [--tcp [--port n]] [--ttl n] host")
+    print("       straylight-probe --path | --watch [seconds] [-i seconds]")
     exit(2)
 }
 

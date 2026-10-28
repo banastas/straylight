@@ -79,7 +79,7 @@ straylight is an always-on trace to the router and the internet in the menu bar,
 | Fast recheck | When a probe is lost and the interval is longer than 1 s, that target is probed every second until 3 replies in a row arrive, then returns to its normal rate. Outages are caught at the same speed on battery as on power. |
 | Timeout | No reply within 2 s counts as lost. A reply after the timeout is logged as late, not counted as received. |
 | Fallback | During warm-up, if an internet host answers no ICMP while the router does, straylight tries a TCP connect to that host on port 443 (non-blocking `connect`, time to SYN-ACK, close immediately). Only if TCP succeeds does that host switch to TCP connect timing, labeled "TCP". ICMP failing on its own never triggers the switch: with TCP failing too, it's an outage. In TCP mode, one ICMP probe is still sent per minute; after 3 ICMP replies in a row, the host switches back. |
-| Network changes | Probes in flight when the path changes (Wi‑Fi ↔ Ethernet, VPN up/down, sleep/wake) are discarded, not counted as lost. Probing restarts with warm-up after targets are re-resolved. |
+| Network changes | Probes in flight when the path changes (Wi‑Fi ↔ Ethernet, VPN up/down, sleep/wake) are discarded, not counted as lost. Probing restarts with warm-up after targets are re-resolved. A wake is noticed without AppKit: the gap between `mach_continuous_time()` and `mach_absolute_time()` grows only across a sleep. |
 | Pauses | No probes while the screen is locked or the display is asleep, unless "Keep monitoring while locked" is on (for overnight logging). No probes while paused from the menu (§6.6). With no network path, probing stops and the verdict is Offline. |
 
 ### 6.3 Metrics and verdict
@@ -94,7 +94,7 @@ Per target, from a ring buffer of recent probes. The **window** is the last 60 s
 | Jitter | Mean of \|RTTᵢ − RTTᵢ₋₁\| over consecutive replies in the window, in ms (mean IPDV, unsmoothed; RFC 3550's smoothed jitter isn't used). A pair is skipped when a lost probe falls between the two replies. |
 | Loss | Lost ÷ sent over the window, in %. Lost and sent counts are also kept. |
 
-Each target is **OK**, **Bad** (any threshold below crossed), or **Down** (an outage in progress, see Events). The internet state combines its two hosts: OK if either is OK, Down if both are Down, Bad otherwise. Hosts marked "answered locally" don't count.
+Each target is **OK**, **Bad** (any threshold below crossed), or **Down** (an outage in progress, see Events). The internet state combines its two hosts: OK if either is OK, Down if both are Down, Bad otherwise. Hosts marked "answered locally" don't count. A target's statistics start over whenever its status changes (end of warm-up, a switch to or from TCP), so the ICMP losses from the warm-up of a host that ends up in TCP mode don't linger.
 
 **Verdict**, shown in the popover header and summarized in the menu bar:
 
@@ -240,7 +240,9 @@ straylight/
 │       │   ├── ProbeAddress.swift    # numeric IPv4/IPv6 addresses with scope, resolution
 │       │   ├── MachClock.swift       # the clock both RTT timestamps use
 │       │   ├── TCPProber.swift       # port-443 connect-time fallback
-│       │   ├── Targets.swift         # gateway discovery, IPv6, VPN handling, warm-up, path changes
+│       │   ├── PathMonitor.swift     # gateway discovery, IPv6, VPN handling (SCDynamicStore + NWPathMonitor)
+│       │   ├── Targets.swift         # target planning, warm-up and TCP fallback rules
+│       │   ├── ProbeEngine.swift     # the probe loop: path changes, wake, warm-up, results
 │       │   ├── Stats.swift           # median, p95, jitter, loss, target states, verdict, events
 │       │   ├── History.swift         # SQLite store, per-minute and hourly aggregates, event log, CSV export
 │       │   ├── WiFi.swift            # CoreWLAN details
@@ -336,6 +338,8 @@ Checked before each release with Instruments and with a tick profiler: run the b
 
 The minimums to 1.1.1.1 agree within 0.02 ms, and `ping` times the same way straylight does (a stamp just before `sendto`, a kernel timestamp on receive, no traffic class by default). The difference looks like Cloudflare's path treating the two tools' packets differently, not a timing error, but the cause hasn't been found. Recheck in M2 with two internet hosts. Not yet run: the after-sleep check (this Mac hadn't slept since boot, so the two clocks were still equal) and the loss check (needs Network Link Conditioner).
 
+**M2 results (2026-10-28, same Mac).** The router from the dynamic store matched `route -n get default` exactly (192.168.20.1 on en7). `straylight-probe --watch` showed warm-up end at 10 s with every target on ICMP. With amazon.com, which drops ping but accepts HTTPS, as the primary host, the TCP check succeeded during warm-up and the host switched to TCP timing (about 68 ms) with no ICMP results reported after the switch. Not yet tried, because they need hands on the network: Wi‑Fi ↔ Ethernet switching, a VPN as the primary interface (this Mac has a non-primary `utun4`), an IPv6-only network, and sleep/wake.
+
 ## 10. Accessibility and localization
 
 - VoiceOver labels on the status item and on every popover value; lost probes in traces are described in text ("3 lost in the last minute")
@@ -350,7 +354,7 @@ The minimums to 1.1.1.1 agree within 0.02 ms, and `ping` times the same way stra
 | M0 | Scaffold | XcodeGen project builds an empty menu bar app; `swift test` runs; String Catalog in place |
 | M1 | Prober | ICMP over IPv4 and IPv6, reply matching, timeouts, TCP fallback; RTT matches §9, including after sleep/wake; Wi‑Fi permissions check and App Nap check done |
 | M2 | Targets + paths | Gateway discovery, IPv6 and link-local router, two internet hosts, VPN handling, warm-up, fallback decision, path changes with no false loss |
-| M3 | Stats + verdict | Metrics, target states, verdict, events, fast recheck; every verdict row unit-tested; starting thresholds in place |
+| M3 | Stats + verdict | Metrics, target states, "answered locally", verdict, events, fast recheck; every verdict row unit-tested; starting thresholds in place |
 | M4 | History | SQLite store, per-minute and hourly aggregates, minute states, event log, retention, CSV export |
 | M5 | Menu bar | All styles, both-targets view, verdict marks, pause, fixed width; VoiceOver summary |
 | M6 | Popover | Target cards, Wi‑Fi card, verdict header, history chart, all §6.7 states, first run, Copy diagnostics; VoiceOver labels, Reduce Motion, Increase Contrast |

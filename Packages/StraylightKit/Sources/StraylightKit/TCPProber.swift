@@ -34,7 +34,10 @@ public final class TCPProber: @unchecked Sendable {
         for attempt in attempts.values { attempt.source.cancel() }
     }
 
-    public func probe(_ address: ProbeAddress, port: UInt16 = 443) throws {
+    /// Returns the probe's sequence number, which its result carries. Results
+    /// always arrive later, never during this call.
+    @discardableResult
+    public func probe(_ address: ProbeAddress, port: UInt16 = 443) throws -> UInt16 {
         dispatchPrecondition(condition: .onQueue(queue))
         let descriptor = socket(address.family == .v4 ? AF_INET : AF_INET6, SOCK_STREAM, IPPROTO_TCP)
         guard descriptor >= 0 else { throw ProbeError.socket(errno: errno) }
@@ -53,8 +56,8 @@ public final class TCPProber: @unchecked Sendable {
             break
         case ECONNREFUSED:
             close(descriptor)
-            onResult(ProbeResult(address: address, sequence: sequence, sentAt: sentAt, outcome: .lost))
-            return
+            queue.async { [onResult] in onResult(ProbeResult(address: address, sequence: sequence, sentAt: sentAt, outcome: .lost)) }
+            return sequence
         default:
             close(descriptor)
             throw ProbeError.send(errno: error)
@@ -65,6 +68,7 @@ public final class TCPProber: @unchecked Sendable {
         source.setEventHandler { [weak self] in self?.finish(sequence, descriptor: descriptor) }
         source.setCancelHandler { close(descriptor) }
         source.activate()
+        return sequence
     }
 
     public func checkTimeouts() {

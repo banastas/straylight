@@ -160,7 +160,7 @@ import Testing
         let prober = ICMPProber(queue: queue) { collector.record($0) }
         let target = try #require(ProbeAddress(address))
 
-        try queue.sync { try prober.send(to: target) }
+        _ = try queue.sync { try prober.send(to: target) }
         #expect(collector.done.wait(timeout: .now() + 2) == .success)
         let result = try #require(collector.results.withLock { $0.first })
         guard case .reply(let milliseconds) = result.outcome else { Issue.record("expected a reply, got \(result.outcome)"); return }
@@ -176,7 +176,7 @@ import Testing
         let collector = Collector()
         let prober = TCPProber(queue: queue) { collector.record($0) }
 
-        try queue.sync { try prober.probe(ProbeAddress("127.0.0.1")!, port: port) }
+        _ = try queue.sync { try prober.probe(ProbeAddress("127.0.0.1")!, port: port) }
         #expect(collector.done.wait(timeout: .now() + 2) == .success)
         guard case .reply = collector.results.withLock({ $0.first?.outcome }) else { Issue.record("expected a reply"); return }
     }
@@ -188,7 +188,7 @@ import Testing
         let collector = Collector()
         let prober = TCPProber(queue: queue) { collector.record($0) }
 
-        try queue.sync { try prober.probe(ProbeAddress("127.0.0.1")!, port: port) }
+        _ = try queue.sync { try prober.probe(ProbeAddress("127.0.0.1")!, port: port) }
         #expect(collector.done.wait(timeout: .now() + 2) == .success)
         #expect(collector.results.withLock { $0.first?.outcome } == .lost)
     }
