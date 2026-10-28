@@ -43,6 +43,7 @@ targets:
       - path: App
     dependencies:
       - package: StraylightKit
+      - sdk: CoreWLAN.framework
     info:
       path: App/Support/Info.plist
       properties:

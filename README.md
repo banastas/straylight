@@ -50,6 +50,12 @@ Unit tests run without Xcode:
 swift test --package-path Packages/StraylightKit
 ```
 
+`straylight-probe` is a development tool for checking the probes against `ping`; it isn't part of the app:
+
+```bash
+swift run --package-path Packages/StraylightKit -c release straylight-probe -c 60 1.1.1.1
+```
+
 Debug builds are ad-hoc signed and run on any Mac. Release builds are signed with the maintainer's Developer ID.
 
 ## License

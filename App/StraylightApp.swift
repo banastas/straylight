@@ -17,8 +17,10 @@ enum StraylightApp {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: StatusItemController?
+    private var devChecks: DevChecks?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = StatusItemController()
+        devChecks = DevChecks.startIfRequested()
     }
 }

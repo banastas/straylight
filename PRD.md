@@ -71,9 +71,9 @@ straylight is an always-on trace to the router and the internet in the menu bar,
 
 | Item | Spec |
 |---|---|
-| Method | ICMP echo over unprivileged datagram sockets: `socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)` and `socket(AF_INET6, SOCK_DGRAM, IPPROTO_ICMPV6)`. This is the approach in Apple's SimplePing sample and needs no root. |
-| Matching replies | The kernel may rewrite the ICMP identifier on datagram sockets, so replies are matched on sequence number plus a random 8-byte token in the payload |
-| Timing | Send time from `mach_absolute_time()` just before `sendto`; receive time from the kernel via `SO_TIMESTAMP_MONOTONIC`, so a slow wake-up in the app doesn't inflate the RTT. Both must use the same clock. `SO_TIMESTAMP_MONOTONIC` is believed to use `mach_absolute_time()`, which pauses during sleep; pairing it with `mach_continuous_time()` would add the total sleep since boot to every RTT. Confirm in M1 with an RTT check after sleep/wake. |
+| Method | ICMP echo over unprivileged datagram sockets: `socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)` and `socket(AF_INET6, SOCK_DGRAM, IPPROTO_ICMPV6)`. This is the approach in Apple's SimplePing sample and needs no root. In xnu these are raw sockets with the privilege check removed: the app computes the IPv4 checksum (the kernel computes ICMPv6's), `IP_STRIPHDR` drops the IPv4 header on receive, and `ICMP6_FILTER` limits the IPv6 socket to echo replies. |
+| Matching replies | The IPv4 socket sees every ICMP packet for the Mac, including replies to other apps' pings. Replies are matched on sequence number, a random 8-byte token in the payload, and source address. xnu doesn't rewrite the identifier, but matching doesn't rely on it. |
+| Timing | Send time from `mach_absolute_time()` just before `sendto`; receive time from the kernel via `SO_TIMESTAMP_MONOTONIC`, so a slow wake-up in the app doesn't inflate the RTT. Both use the same clock: xnu stamps `SO_TIMESTAMP_MONOTONIC` with `mach_absolute_time()` (`ip_savecontrol`, `ip6_savecontrol`), which pauses during sleep. Pairing it with `mach_continuous_time()` would have added the total sleep since boot to every RTT. |
 | Payload | 56 bytes, like `ping` |
 | Rate | 1 probe per second per target on power; 1 per 5 s on battery (both configurable). The battery rate also applies in Low Power Mode and when the path is constrained (Low Data Mode) or expensive (e.g. an iPhone hotspot). Warm-up (§6.1) and fast recheck (below) temporarily probe at 1 s. |
 | Fast recheck | When a probe is lost and the interval is longer than 1 s, that target is probed every second until 3 replies in a row arrive, then returns to its normal rate. Outages are caught at the same speed on battery as on power. |
@@ -140,7 +140,7 @@ A verdict has to hold for 10 s before it changes, so it doesn't flap.
 
 When the primary interface is Wi‑Fi, CoreWLAN (`CWWiFiClient.shared().interface()`) supplies RSSI, noise, transmit rate and channel (band and width), sampled every 5 s on a probe tick. The network name (SSID) and BSSID are not shown, because they need Location permission.
 
-**Permissions check (M1):** confirm that RSSI, noise, rate and channel are available on macOS 27 without Location authorization. If they aren't, drop this section rather than ask for Location.
+**Permissions check (M1, 2026-10-28): passed.** On macOS 27.2, the app bundle without Location authorization gets RSSI, noise, transmit rate and channel (number, band, width) from CoreWLAN. SSID and BSSID come back nil, as expected.
 
 ### 6.6 Menu bar
 
@@ -234,7 +234,11 @@ straylight/
 ├── Packages/
 │   └── StraylightKit/       # Unit-tested with `swift test`
 │       ├── Sources/StraylightKit/
-│       │   ├── ICMPProber.swift      # datagram sockets, send, receive, matching, timeouts
+│       │   ├── ICMPProber.swift      # datagram sockets, send, receive, kernel timestamps
+│       │   ├── ICMPPacket.swift      # echo request and reply encoding, checksum
+│       │   ├── ProbeResult.swift     # outcomes, reply matching, timeouts, late replies
+│       │   ├── ProbeAddress.swift    # numeric IPv4/IPv6 addresses with scope, resolution
+│       │   ├── MachClock.swift       # the clock both RTT timestamps use
 │       │   ├── TCPProber.swift       # port-443 connect-time fallback
 │       │   ├── Targets.swift         # gateway discovery, IPv6, VPN handling, warm-up, path changes
 │       │   ├── Stats.swift           # median, p95, jitter, loss, target states, verdict, events
@@ -243,9 +247,11 @@ straylight/
 │       │   ├── Diagnostics.swift     # os_log categories, Copy diagnostics
 │       │   ├── RingBuffer.swift      # from flatline (see §13)
 │       │   └── Format.swift          # from flatline
+│       ├── Sources/straylight-probe/ # dev CLI for checking probes against ping; not shipped
 │       └── Tests/StraylightKitTests/
 ├── App/
 │   ├── StraylightApp.swift
+│   ├── DevChecks.swift          # STRAYLIGHT_DEV_LOG: Wi‑Fi and timer checks inside the app
 │   ├── StatusItemController.swift
 │   ├── MenuBarRenderer.swift
 │   ├── Popover/…
@@ -275,7 +281,7 @@ Tests cover:
 - Timeouts are checked on the next send tick, not with a separate timer.
 - All socket work runs on one serial queue. The `@Observable` snapshot on the main actor is updated at most once per tick.
 - History is appended in memory and flushed to disk once a minute.
-- **App Nap** may stretch the send timer. RTTs aren't affected, because both timestamps are taken at the socket, but probe spacing is. M1 measures whether timers drift past the 10 % leeway with the app in the background; if they do, a `ProcessInfo` activity is held while probing.
+- **App Nap** could stretch the send timer. RTTs wouldn't be affected, because both timestamps are taken at the socket, but probe spacing would. M1 checked this (2026-10-28): over 10 minutes in the background, a 1 s timer with 10 % leeway fired 600 times, 958–1074 ms apart (median 1000.0 ms, p99 1039 ms), never past the leeway. No `ProcessInfo` activity is needed. Recheck on battery in M7.
 
 **Battery:** Wi‑Fi radios save power by sleeping between beacons, and a probe every second keeps waking them. That's why the battery default is 5 s and probing stops while the screen is locked. Energy impact on battery is measured in M7 against flatline.
 
@@ -319,6 +325,17 @@ Checked before each release with Instruments and with a tick profiler: run the b
 | Outage on battery | Unplug the router's WAN cable for 30 s on battery | Outage logged with start and end within one probe interval of the real ones; verdict Internet down; no switch to TCP |
 | ICMP blocked | Block outbound ICMP to the internet hosts with `pf` | Hosts switch to TCP during warm-up; verdict stays Good |
 
+**M1 results (2026-10-28, M2 Pro Mac mini on Ethernet, macOS 27.2).** `straylight-probe` and `ping` ran side by side at 1 s:
+
+| Target | Median: straylight / ping | Jitter: straylight / ping | Result |
+|---|---|---|---|
+| Router (192.168.20.1) | 0.405 / 0.415 ms | 0.142 / 0.106 ms | Pass |
+| 8.8.8.8 | 5.37 / 5.59 ms | | Pass |
+| 9.9.9.9 | 7.51 / 7.52 ms | | Pass |
+| 1.1.1.1 | 5.85–6.78 / 6.64–7.25 ms over 4 runs | 1.38 / 1.35 ms | Median **fails**: 0.5–0.9 ms lower than ping every run, even with each tool running alone |
+
+The minimums to 1.1.1.1 agree within 0.02 ms, and `ping` times the same way straylight does (a stamp just before `sendto`, a kernel timestamp on receive, no traffic class by default). The difference looks like Cloudflare's path treating the two tools' packets differently, not a timing error, but the cause hasn't been found. Recheck in M2 with two internet hosts. Not yet run: the after-sleep check (this Mac hadn't slept since boot, so the two clocks were still equal) and the loss check (needs Network Link Conditioner).
+
 ## 10. Accessibility and localization
 
 - VoiceOver labels on the status item and on every popover value; lost probes in traces are described in text ("3 lost in the last minute")
@@ -359,7 +376,7 @@ Checked before each release with Instruments and with a tick profiler: run the b
 ## 13. Open questions
 
 1. **Shared code with flatline and freeside**: copy `RingBuffer`, `Format`, the menu bar renderer and the release scripts, or extract a shared Swift package (working name `sprawl`)? Same question as in freeside's PRD; decide once for all three.
-2. **Hop-by-hop view**: an mtr-style view would show where along the path loss starts. It needs TTL-limited probes, and it's not yet confirmed that unprivileged ICMP datagram sockets receive Time Exceeded replies. Worth a spike after 1.0.
+2. **Hop-by-hop view**: an mtr-style view would show where along the path loss starts. It needs TTL-limited probes. M1 showed this works without root over IPv4: the datagram socket accepts `IP_TTL`, and a TTL 1 probe got a Time Exceeded reply from the router (`straylight-probe --ttl 1`). IPv6 (`IPV6_UNICAST_HOPS`) is untested. Worth a spike after 1.0.
 3. **DNS timing**: is resolver latency worth tracking? Caching makes it hard to measure honestly.
 4. **On-demand capacity test**: a button that runs macOS's `networkQuality` and shows the result? It saturates the link for about 20 s, so on demand only.
 5. **Flatline integration**: should flatline's network card show straylight's verdict when both are running, or should the apps stay fully separate?

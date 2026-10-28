@@ -9,6 +9,8 @@ let package = Package(
     ],
     targets: [
         .target(name: "StraylightKit"),
+        // Development tool for checking the probers against `ping`; not shipped.
+        .executableTarget(name: "straylight-probe", dependencies: ["StraylightKit"]),
         .testTarget(name: "StraylightKitTests", dependencies: ["StraylightKit"]),
     ]
 )

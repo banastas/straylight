@@ -1,0 +1,176 @@
+// straylight-probe: a development tool for checking the probers against
+// `ping` (PRD §9). Not shipped in the app.
+//
+//   straylight-probe 1.1.1.1                  60 ICMP probes, 1 s apart
+//   straylight-probe -c 20 -i 0.5 192.168.1.1
+//   straylight-probe --tcp 1.1.1.1            TCP connect timing to port 443
+//   straylight-probe --ttl 1 1.1.1.1          does Time Exceeded reach an unprivileged socket?
+
+import Darwin
+import Dispatch
+import Foundation
+import StraylightKit
+
+struct Options {
+    var host = ""
+    var count = 60
+    var interval = 1.0
+    var tcp = false
+    var port: UInt16 = 443
+    var ttl: Int32?
+
+    init(_ arguments: [String]) {
+        var arguments = arguments[...]
+        while let argument = arguments.popFirst() {
+            switch argument {
+            case "-c": count = arguments.popFirst().flatMap(Int.init) ?? count
+            case "-i": interval = arguments.popFirst().flatMap(Double.init) ?? interval
+            case "--tcp": tcp = true
+            case "--port": port = arguments.popFirst().flatMap(UInt16.init) ?? port
+            case "--ttl": ttl = arguments.popFirst().flatMap(Int32.init)
+            default: host = argument
+            }
+        }
+    }
+}
+
+let options = Options(Array(CommandLine.arguments.dropFirst()))
+guard !options.host.isEmpty, let target = ProbeAddress.resolve(options.host).first else {
+    print("usage: straylight-probe [-c count] [-i seconds] [--tcp [--port n]] [--ttl n] host")
+    exit(2)
+}
+
+func format(_ milliseconds: Double) -> String {
+    String(format: "%.3f", milliseconds)
+}
+
+// MARK: - Time Exceeded check (PRD §13, hop-by-hop)
+
+if let ttl = options.ttl {
+    guard target.family == .v4 else { print("--ttl checks IPv4 only"); exit(2) }
+    let descriptor = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)
+    guard descriptor >= 0 else { print("socket: \(String(cString: strerror(errno)))"); exit(1) }
+    var value = ttl
+    var on: Int32 = 1
+    setsockopt(descriptor, IPPROTO_IP, IP_TTL, &value, socklen_t(MemoryLayout<Int32>.size))
+    setsockopt(descriptor, IPPROTO_IP, IP_STRIPHDR, &on, socklen_t(MemoryLayout<Int32>.size))
+    var wait = timeval(tv_sec: 2, tv_usec: 0)
+    setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &wait, socklen_t(MemoryLayout<timeval>.size))
+
+    let identifier = UInt16.random(in: .min ... .max)
+    let packet = ICMPPacket.request(.init(identifier: identifier, sequence: 1, token: 1), family: .v4)
+    var destination = sockaddr_in()
+    destination.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+    destination.sin_family = sa_family_t(AF_INET)
+    withUnsafeMutableBytes(of: &destination.sin_addr) { $0.copyBytes(from: target.bytes) }
+    let sent = withUnsafePointer(to: &destination) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { address in
+            packet.withUnsafeBytes { sendto(descriptor, $0.baseAddress, $0.count, 0, address, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+        }
+    }
+    guard sent == packet.count else { print("send: \(String(cString: strerror(errno)))"); exit(1) }
+
+    // Time Exceeded quotes the original IP header and the first 8 bytes of our ICMP header.
+    var buffer = [UInt8](repeating: 0, count: 1500)
+    var source = sockaddr_in()
+    var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+    while true {
+        let count = withUnsafeMutablePointer(to: &source) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { recvfrom(descriptor, &buffer, buffer.count, 0, $0, &length) }
+        }
+        guard count > 0 else { print("no Time Exceeded within 2 s"); exit(1) }
+        var bytes = Array(buffer[..<count])
+        if bytes[0] >> 4 == 4 { bytes.removeFirst(Int(bytes[0] & 0x0f) * 4) }
+        guard bytes.count >= 8 + 20 + 8, bytes[0] == 11 else { continue }
+        let quoted = 8 + Int(bytes[8] & 0x0f) * 4
+        guard bytes.count >= quoted + 8, UInt16(bytes[quoted + 4]) << 8 | UInt16(bytes[quoted + 5]) == identifier else { continue }
+        let from = withUnsafePointer(to: &source.sin_addr) { String(cString: inet_ntoa($0.pointee)) }
+        print("Time Exceeded from \(from) at TTL \(ttl): an unprivileged socket receives it")
+        exit(0)
+    }
+}
+
+// MARK: - Probe run
+
+final class Run: @unchecked Sendable {
+    let options: Options
+    let target: ProbeAddress
+    let queue = DispatchQueue(label: "straylight-probe")
+    var results: [ProbeResult] = []
+    var sent = 0
+    var icmp: ICMPProber?
+    var tcp: TCPProber?
+    var timer: DispatchSourceTimer?
+
+    init(options: Options, target: ProbeAddress) {
+        self.options = options
+        self.target = target
+    }
+
+    func record(_ result: ProbeResult) {
+        switch result.outcome {
+        case .reply(let milliseconds): print("seq \(result.sequence): \(format(milliseconds)) ms")
+        case .lost: print("seq \(result.sequence): lost")
+        case .late(let milliseconds): print("seq \(result.sequence): late, \(format(milliseconds)) ms")
+        }
+        results.append(result)
+    }
+
+    func start() {
+        if options.tcp {
+            tcp = TCPProber(queue: queue) { [unowned self] in record($0) }
+        } else {
+            icmp = ICMPProber(queue: queue) { [unowned self] in record($0) }
+        }
+        print("probing \(target) \(options.tcp ? "with TCP to port \(options.port)" : "with ICMP"), \(options.count) × \(options.interval) s")
+
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now(), repeating: options.interval, leeway: .milliseconds(Int(options.interval * 100)))
+        timer.setEventHandler { [unowned self] in tick() }
+        self.timer = timer
+        timer.activate()
+    }
+
+    func tick() {
+        icmp?.checkTimeouts()
+        tcp?.checkTimeouts()
+        guard sent < options.count else {
+            if results.count >= sent || results.allSatisfy({ MachClock.milliseconds(from: $0.sentAt, to: MachClock.now()) > 2500 }) {
+                summarize()
+                exit(0)
+            }
+            return
+        }
+        do {
+            if let icmp { try icmp.send(to: target) }
+            if let tcp { try tcp.probe(target, port: options.port) }
+        } catch {
+            print("send failed: \(error)")
+        }
+        sent += 1
+    }
+
+    func summarize() {
+        let counted = results.filter { if case .late = $0.outcome { false } else { true } }.sorted { $0.sentAt < $1.sentAt }
+        let rtts = counted.compactMap { if case .reply(let milliseconds) = $0.outcome { milliseconds } else { nil } }
+        let lost = counted.count - rtts.count
+        let late = results.count - counted.count
+        print("--- \(target): \(counted.count) sent, \(rtts.count) received, \(lost) lost, \(late) late, \(String(format: "%.1f", 100 * Double(lost) / Double(max(1, counted.count))))% loss")
+        guard !rtts.isEmpty else { return }
+
+        let sorted = rtts.sorted()
+        let median = sorted.count % 2 == 1 ? sorted[sorted.count / 2] : (sorted[sorted.count / 2 - 1] + sorted[sorted.count / 2]) / 2
+        let p95 = sorted[Int((0.95 * Double(sorted.count)).rounded(.up)) - 1]
+        // Mean |ΔRTT| between consecutive replies, skipping pairs split by a loss (PRD §6.3).
+        var differences: [Double] = []
+        for (previous, next) in zip(counted, counted.dropFirst()) {
+            if case .reply(let a) = previous.outcome, case .reply(let b) = next.outcome { differences.append(abs(b - a)) }
+        }
+        let jitter = differences.isEmpty ? 0 : differences.reduce(0, +) / Double(differences.count)
+        print("rtt min/median/p95/max = \(format(sorted.first!))/\(format(median))/\(format(p95))/\(format(sorted.last!)) ms, jitter \(format(jitter)) ms")
+    }
+}
+
+let run = Run(options: options, target: target)
+run.queue.async { run.start() }
+dispatchMain()
