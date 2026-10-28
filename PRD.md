@@ -305,11 +305,11 @@ Tests cover:
 ### 7.3 Probe loop
 
 - One send timer with 10 % leeway sends to every target due in the same wake-up. Its interval drops to 1 s during warm-up or while any target is in fast recheck.
-- Replies arrive through a `DispatchSourceRead` on each socket (one IPv4, one IPv6), so nothing polls for replies.
+- Replies wait in the sockets (one IPv4, one IPv6) and are read with the round's tick, 0.25 s after the sends, rather than through a read source per reply: one wake-up a round instead of one per reply. RTTs don't change, because the kernel stamps each reply as it arrives, and the timeout rule uses that stamp. A reply slower than 0.25 s is read on the next send tick, where timeouts are checked anyway. TCP connects still finish through their write source, since TCP mode is rare.
 - Timeouts are checked on the next send tick, not with a separate timer.
-- All socket work runs on one serial queue. The `@Observable` snapshot on the main actor is updated at most once per tick: `Monitor` publishes one 0.25 s after each round of probes, once most replies are in, and one after each network change.
+- All socket work runs on one serial queue. The `@Observable` snapshot on the main actor is updated at most once per tick: `Monitor` publishes one 0.25 s after each round of probes, once most replies are in, and one after each network change. The round's measurements travel with the snapshot, so the main thread takes one hop a round and history none.
 - Each target keeps its own due time, so on 1 s ticks (warm-up, or another target in fast recheck) a 5 s target is still probed every 5 s. A fast recheck carries on past the end of warm-up.
-- History is appended in memory and flushed to disk once a minute.
+- History is appended in memory and flushed to disk once a minute. Each round's measurements wait in a locked inbox that the history queue empties on its own 10 s tick or before any read, so recording costs no wake-up; state changes go through the same inbox so they stay in order with the measurements.
 - **App Nap** could stretch the send timer. RTTs wouldn't be affected, because both timestamps are taken at the socket, but probe spacing would. M1 checked this (2026-10-28): over 10 minutes in the background, a 1 s timer with 10 % leeway fired 600 times, 958–1074 ms apart (median 1000.0 ms, p99 1039 ms), never past the leeway. No `ProcessInfo` activity is needed. Still to recheck on battery, on a Mac that has one.
 
 **Battery:** Wi‑Fi radios save power by sleeping between beacons, and a probe every second keeps waking them. That's why the battery default is 5 s and probing stops while the screen is locked. Energy impact on battery is measured in M7 against flatline.
@@ -333,7 +333,7 @@ Measured on an M-series Mac with the default targets (router, two internet hosts
 |---|---|
 | Average CPU at a 1 s interval | < 0.1 % of one core |
 | Resident memory | < 30 MB |
-| Wake-ups | ≤ 1 timer wake-up plus one read event per reply, per interval |
+| Wake-ups | ≤ 2 on the probe queue per interval (the send timer and the round's tick), plus one hop to the main thread |
 | Network | < 1 kbit/s each way per target at a 1 s interval |
 | Energy Impact (Activity Monitor), on power | ≈ flatline's |
 | History on disk | < 10 MB at 90-day retention |
@@ -391,12 +391,16 @@ Not yet run: a real outage (unplugging the router's WAN) and the loss check.
 
 Probes now reach the main thread once per round with the snapshot, rather than one hop per probe. Not yet checked: the real popover opened by a click (snapshots draw the same view off-screen), the right-click menu, Export CSV's save panel, VoiceOver on the popover, Increase Contrast, a light appearance (the phosphor accent may be too faint on white), Offline, a Wi‑Fi path, and the 50 ms first-frame budget.
 
-**M7 results (2026-10-28, same Mac, a desktop on AC power).** All §6.10 settings except automatic updates are in the panel and persist; the Kit has 107 passing tests, including the notification rules and the threshold report. Checked:
+**M7 results (2026-10-28, same Mac, a desktop on AC power).** All §6.10 settings except automatic updates are in the panel and persist; the Kit has 110 passing tests, including the notification rules, the threshold report, reading replies late and the history inbox's ordering. Checked:
 
 - `STRAYLIGHT_ON_BATTERY=1`: the monitor runs at the 5 s battery interval, the panel says "On battery now, so probing every 5s", and Copy diagnostics shows `probing interval=5.0s (battery)`.
 - `STRAYLIGHT_LOCK_TEST=10,150` with a test database: probing stopped 10 s in ("stopped: locked" in the log), three full minutes were stored as locked, and after the unlock the monitor warmed up again and the next minute was measured with 14 probes per target. A lock during warm-up drops that warm-up's probes, as the warm-up rule already does.
-- Energy, release build, popover closed, 1 s interval, router and two hosts on Ethernet, over 3 minutes with `top`: straylight 0.16 % of one core and Energy Impact 0.16, 13 MB resident; flatline 0.07 % and 0.07, 34 MB. Before the fix below it was 0.23 %. Memory is within budget; CPU is over the 0.1 % budget, so §8 isn't met yet. `sample` puts the rest in sending and receiving probes, applying each snapshot on the main thread, and Core Animation copying each new menu bar image, which flatline also pays.
-- Fixed: the menu bar's spoken summary was rebuilt every second with localized string formatting, as much work as drawing the image. It's now built only while VoiceOver is running; otherwise the item is named "straylight".
+- Energy, release build, popover closed, 1 s interval, router and two hosts on Ethernet. CPU time comes from `ps` over the same window for straylight and flatline side by side, because absolute numbers move with system load (flatline alone read 0.100–0.127 % across runs) and `top` rounds to 0.1 %. Starting point: straylight 0.211 % of one core, flatline 0.100 %; the measuring pipeline alone (`straylight-probe --monitor --quiet`) 0.106 %, with about 20 context switches a second against flatline's 6. The cost was wake-ups, not computation. Fixes, in order:
+  - The menu bar's spoken summary was rebuilt every second with localized string formatting. It's now built only while VoiceOver is running; otherwise the item is named "straylight".
+  - Replies are read with each round's tick instead of one read event per reply (§7.3), and the round's measurements travel with its snapshot: the pipeline alone fell to 0.072 %, the app to 0.161 %, context switches to about 13 a second.
+  - Core Animation was color-converting every new menu bar image from device RGB to the display's space on commit. The image is now drawn in the status item window's own color space: the app fell to 0.133 % beside flatline's 0.106 %.
+  - History takes each round's measurements from an inbox on its own 10 s tick rather than a hop a round.
+  - Final, 5 minutes after a 90 s settle: straylight 0.157 % and flatline 0.127 %, about 1.25 × flatline, down from 2.1 ×. Resident memory 13 MB against flatline's 34 MB. The 0.1 % budget in §8 isn't met; flatline doesn't meet it either when measured this way.
 - `straylight-probe --tune` over the 147 real minutes so far (Ethernet only): router p95 0.8 / 7.6 / 32 ms at p50 / p95 / p99 and 1.4 % of minutes Bad; 1.1.1.1 0.7 % Bad; 8.8.8.8 1.4 % Bad, all from the made-up outages and spikes of earlier tests. The thresholds stay as they are until there's a week of Wi‑Fi and Ethernet history.
 
 Not yet checked: real notifications (they need the permission prompt answered), a real screen lock and display sleep, Low Power Mode, a Low Data or hotspot path, the App Nap recheck and energy on battery (this Mac has none), and the threshold tuning, which waits for a week of history.

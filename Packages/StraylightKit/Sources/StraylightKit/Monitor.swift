@@ -188,15 +188,15 @@ struct MonitorCore {
 
 /// Runs the probe engine and turns what it measures into statistics, target
 /// states, the verdict, and outage and spike events (PRD §6.3). Updates come
-/// on the engine's queue: a snapshot after every round of probes and after a
-/// network change, and each event as it ends.
+/// on the engine's queue: a snapshot with the round's measurements after every
+/// round of probes and after a network change, and each event as it ends.
 public final class Monitor: @unchecked Sendable {
     public enum Update: Sendable, Equatable {
-        case snapshot(MonitorSnapshot)
+        /// `probes` are the measurements since the last snapshot, for history
+        /// and traces, so they travel on with one hop a round. Warm-up results
+        /// come once warm-up ends, and only if the target stays on ICMP.
+        case snapshot(MonitorSnapshot, probes: [ProbeRecord])
         case event(NetworkEvent)
-        /// Every measurement, for history. Warm-up results come once warm-up
-        /// ends, and only if the target stays on ICMP.
-        case probe(ProbeRecord)
     }
 
     // `core` is touched only from engine callbacks, which all run on the engine's queue.
@@ -225,7 +225,7 @@ public final class Monitor: @unchecked Sendable {
         switch event {
         case .targets(let path, let targets):
             publish(core.install(targets, on: path, now: now))
-            onUpdate(.snapshot(core.snapshot(now: now)))
+            onUpdate(.snapshot(core.snapshot(now: now), probes: core.takeProbes()))
         case .status(let role, let status):
             publish(core.setStatus(status, for: role, now: now))
         case .result(let role, _, let result):
@@ -234,9 +234,8 @@ public final class Monitor: @unchecked Sendable {
             let sentAt = now - MachClock.milliseconds(from: result.sentAt, to: MachClock.now()) / 1000
             publish(core.record(result.outcome, for: role, sentAt: sentAt))
         case .tick:
-            onUpdate(.snapshot(core.tick(now: now)))
+            onUpdate(.snapshot(core.tick(now: now), probes: core.takeProbes()))
         }
-        for probe in core.takeProbes() { onUpdate(.probe(probe)) }
     }
 
     private func publish(_ events: [NetworkEvent]) {

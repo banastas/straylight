@@ -25,6 +25,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate, NSMenuDelegate {
         var layout: MenuBarRenderer.Layout
         var appearance: NSAppearance.Name
         var scale: CGFloat
+        var colorSpace: CGColorSpace
     }
     private var lastRender: RenderKey?
     private var lastAccessibilityLabel: String?
@@ -84,11 +85,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate, NSMenuDelegate {
         let layout = MenuBarRenderer.layout(model: model, preferences: preferences)
         let appearance = button.effectiveAppearance
         let scale = button.window?.backingScaleFactor ?? 2
-        let key = RenderKey(layout: layout, appearance: appearance.name, scale: scale)
+        let colorSpace = button.window?.colorSpace?.cgColorSpace ?? CGColorSpaceCreateDeviceRGB()
+        let key = RenderKey(layout: layout, appearance: appearance.name, scale: scale, colorSpace: colorSpace)
         guard key != lastRender else { return }
         lastRender = key
 
-        guard let image = MenuBarRenderer.image(for: layout, appearance: appearance, scale: scale) else { return }
+        guard let image = MenuBarRenderer.image(for: layout, appearance: appearance, scale: scale, colorSpace: colorSpace) else { return }
         let size = CGSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
         let length = size.width + 2 * Self.horizontalPadding
         if statusItem.length != length { statusItem.length = length }

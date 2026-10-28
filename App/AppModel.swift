@@ -240,29 +240,25 @@ final class AppModel {
         generation += 1
         let generation = generation
         let history = history
-        // Probes wait here and go to the main thread with the snapshot after
-        // their round, so the main thread wakes once a round, not per probe.
-        let pending = OSAllocatedUnfairLock<[(TargetRole, TraceSample)]>(initialState: [])
         monitorInterval = interval
+        // Each round's probes arrive with its snapshot, so history and the
+        // main thread each take one hop a round, not one per probe.
         let monitor = Monitor(settings: targetSettings, interval: interval) { [weak self] update in
-            // History takes everything straight from the engine's queue.
             switch update {
-            case .probe(let probe):
-                history?.record(probe)
-                // Late replies were already counted as lost.
-                if case .late = probe.outcome { return }
-                let rtt: Double? = if case .reply(let milliseconds) = probe.outcome { milliseconds } else { nil }
-                pending.withLock { $0.append((probe.target.role, TraceSample(sentAt: probe.sentAt, rtt: rtt))) }
             case .event(let event):
                 history?.record(event)
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated { self?.apply(event, generation: generation) }
                 }
-            case .snapshot(let snapshot):
-                history?.setState(snapshot.path.isSatisfied ? .measured : .offline)
-                let samples = pending.withLock { pending in
-                    defer { pending.removeAll() }
-                    return pending
+            case .snapshot(let snapshot, let probes):
+                history?.record(probes, state: snapshot.path.isSatisfied ? .measured : .offline)
+                let samples = probes.compactMap { probe -> (TargetRole, TraceSample)? in
+                    switch probe.outcome {
+                    case .reply(let milliseconds): (probe.target.role, TraceSample(sentAt: probe.sentAt, rtt: milliseconds))
+                    case .lost: (probe.target.role, TraceSample(sentAt: probe.sentAt, rtt: nil))
+                    // Late replies were already counted as lost.
+                    case .late: nil
+                    }
                 }
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated { self?.apply(snapshot, samples: samples, generation: generation) }

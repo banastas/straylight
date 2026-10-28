@@ -225,3 +225,35 @@ import Testing
         #expect(core.takeProbes().map(\.probeProtocol) == [.tcp])
     }
 }
+
+@Suite struct HistoryInboxTests {
+    let target = Target(role: .router, host: "router", address: ProbeAddress("192.168.1.1")!)
+
+    /// Rounds wait in the inbox; reads and state changes see them in call order.
+    @Test func roundsAndStatesLandInOrder() throws {
+        let history = try History(url: nil)
+        let now = Date()
+        history.record([ProbeRecord(target: target, probeProtocol: .icmp, outcome: .reply(milliseconds: 2), sentAt: now)], state: .measured)
+        history.setState(.paused)
+        history.record([], state: .measured)
+        history.setState(.locked)
+
+        // Writes everything, including the minute in progress.
+        history.close()
+        let minute = Date(timeIntervalSince1970: (now.timeIntervalSince1970 / 60).rounded(.down) * 60)
+        let periods = try history.periods(from: minute, to: minute.addingTimeInterval(60))
+        #expect(periods.map(\.state) == [.measured], "a minute with a measurement is measured")
+        let rows = try history.aggregates(from: minute, to: minute.addingTimeInterval(60))
+        #expect(rows.map(\.sent) == [1])
+    }
+
+    @Test func aStateSetAfterARoundWins() throws {
+        let history = try History(url: nil)
+        let now = Date()
+        history.record([], state: .measured)
+        history.setState(.paused)
+        history.close()
+        let minute = Date(timeIntervalSince1970: (now.timeIntervalSince1970 / 60).rounded(.down) * 60)
+        #expect(try history.periods(from: minute, to: minute.addingTimeInterval(60)).map(\.state) == [.paused])
+    }
+}

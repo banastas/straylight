@@ -9,8 +9,12 @@ import Dispatch
 /// apps' pings, so replies are matched on sequence number, token and source.
 /// The kernel doesn't rewrite the identifier, but nothing relies on that.
 ///
-/// Everything runs on `queue`: call `send`, `checkTimeouts`, `discardInFlight`
-/// and `invalidate` from it. `onResult` is called on it too.
+/// Everything runs on `queue`: call `send`, `collect`, `checkTimeouts`,
+/// `discardInFlight` and `invalidate` from it. `onResult` is called on it too.
+///
+/// With `readsOnArrival` off, replies wait in the socket until `collect` or
+/// `checkTimeouts`, so a round of probes costs one wake-up rather than one per
+/// reply. RTTs don't change: the kernel stamps each reply as it arrives.
 public final class ICMPProber: @unchecked Sendable {
     private let queue: DispatchQueue
     private let onResult: @Sendable (ProbeResult) -> Void
@@ -18,15 +22,17 @@ public final class ICMPProber: @unchecked Sendable {
     private var nextSequence = UInt16.random(in: .min ... .max)
     private var pending: PendingProbes
     private var sockets: [IPFamily: ProbeSocket] = [:]
+    private let readsOnArrival: Bool
 
-    public init(queue: DispatchQueue, timeout: Double = 2, onResult: @escaping @Sendable (ProbeResult) -> Void) {
+    public init(queue: DispatchQueue, timeout: Double = 2, readsOnArrival: Bool = true, onResult: @escaping @Sendable (ProbeResult) -> Void) {
         self.queue = queue
+        self.readsOnArrival = readsOnArrival
         self.onResult = onResult
         pending = PendingProbes(timeout: MachClock.ticks(seconds: timeout), lateWindow: MachClock.ticks(seconds: 30))
     }
 
     deinit {
-        for socket in sockets.values { socket.source.cancel() }
+        for socket in sockets.values { socket.close() }
     }
 
     /// Returns the probe's sequence number, which its result carries.
@@ -48,6 +54,12 @@ public final class ICMPProber: @unchecked Sendable {
         return sequence
     }
 
+    /// Reads the replies waiting in the sockets.
+    public func collect() {
+        dispatchPrecondition(condition: .onQueue(queue))
+        for socket in sockets.values { drain(socket) }
+    }
+
     /// Reports probes past the timeout as lost. Replies already waiting in the
     /// socket are read first, so a reply isn't counted lost because the timer
     /// fired before its read event.
@@ -67,7 +79,7 @@ public final class ICMPProber: @unchecked Sendable {
     /// Closes the sockets. The next `send` opens them again.
     public func invalidate() {
         dispatchPrecondition(condition: .onQueue(queue))
-        for socket in sockets.values { socket.source.cancel() }
+        for socket in sockets.values { socket.close() }
         sockets.removeAll()
         pending.discardAll()
     }
@@ -77,7 +89,12 @@ public final class ICMPProber: @unchecked Sendable {
     private struct ProbeSocket {
         let descriptor: Int32
         let family: IPFamily
-        let source: DispatchSourceRead
+        /// Nil when replies are read only on `collect`; the descriptor is then closed directly.
+        let source: DispatchSourceRead?
+
+        func close() {
+            if let source { source.cancel() } else { Darwin.close(descriptor) }
+        }
     }
 
     private func socket(for family: IPFamily) throws -> ProbeSocket {
@@ -106,10 +123,15 @@ public final class ICMPProber: @unchecked Sendable {
         }
         _ = fcntl(descriptor, F_SETFL, fcntl(descriptor, F_GETFL) | O_NONBLOCK)
 
+        guard readsOnArrival else {
+            let socket = ProbeSocket(descriptor: descriptor, family: family, source: nil)
+            sockets[family] = socket
+            return socket
+        }
         let source = DispatchSource.makeReadSource(fileDescriptor: descriptor, queue: queue)
         let socket = ProbeSocket(descriptor: descriptor, family: family, source: source)
         source.setEventHandler { [weak self] in self?.drain(socket) }
-        source.setCancelHandler { close(descriptor) }
+        source.setCancelHandler { Darwin.close(descriptor) }
         source.activate()
         sockets[family] = socket
         return socket

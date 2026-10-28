@@ -169,6 +169,22 @@ import Testing
         queue.sync { prober.invalidate() }
     }
 
+    /// Read long after it arrived, a reply still has its real RTT: the kernel stamped it.
+    @Test func icmpReadOnCollectKeepsKernelTiming() throws {
+        let queue = DispatchQueue(label: "test.icmp.collect")
+        let collector = Collector()
+        let prober = ICMPProber(queue: queue, readsOnArrival: false) { collector.record($0) }
+        let target = try #require(ProbeAddress("127.0.0.1"))
+
+        _ = try queue.sync { try prober.send(to: target) }
+        #expect(collector.done.wait(timeout: .now() + 0.2) == .timedOut, "nothing is read until collect")
+        queue.sync { prober.collect() }
+        let result = try #require(collector.results.withLock { $0.first })
+        guard case .reply(let milliseconds) = result.outcome else { Issue.record("expected a reply, got \(result.outcome)"); return }
+        #expect(milliseconds > 0 && milliseconds < 50)
+        queue.sync { prober.invalidate() }
+    }
+
     @Test func tcpConnectsToListener() throws {
         let (listener, port) = try Self.listen()
         defer { close(listener) }

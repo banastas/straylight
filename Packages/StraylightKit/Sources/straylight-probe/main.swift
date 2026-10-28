@@ -11,6 +11,7 @@
 //   straylight-probe --monitor 120 -i 5      stats, states and the verdict after each round
 //   straylight-probe --monitor 600 --history /tmp/h.sqlite   also record history there
 //   straylight-probe --export /tmp/h.sqlite 30               CSV of the last 30 minutes
+//   straylight-probe --monitor 180 --quiet --history /tmp/h.sqlite   the same without printing, to measure its CPU
 //   straylight-probe --tune ~/Library/Application\ Support/straylight/history.sqlite 7
 //                                             how the Bad thresholds fired over the last 7 days
 
@@ -32,6 +33,7 @@ struct Options {
     var history: String?
     var export: String?
     var tune: String?
+    var quiet = false
     var hosts: [String]?
 
     init(_ arguments: [String]) {
@@ -50,6 +52,7 @@ struct Options {
             case "--history": history = arguments.popFirst()
             case "--export": export = arguments.popFirst()
             case "--tune": tune = arguments.popFirst()
+            case "--quiet": quiet = true
             default: host = argument
             }
         }
@@ -146,10 +149,10 @@ if let seconds = options.monitor {
     let monitor = Monitor(settings: settings, interval: options.interval) { update in
         let time = String(format: "%7.2f", Date().timeIntervalSince(started))
         switch update {
-        case .probe(let probe):
-            history?.record(probe)
-        case .snapshot(let snapshot):
-            history?.setState(snapshot.path.isSatisfied ? .measured : .offline)
+        case .snapshot(let snapshot, let probes):
+            history?.record(probes, state: snapshot.path.isSatisfied ? .measured : .offline)
+            // For measuring the pipeline's own CPU cost.
+            if options.quiet { return }
             var line = "\(time) \(snapshot.verdict)"
             if let internet = snapshot.internet { line += " internet=\(internet)" }
             if snapshot.ipv6Problem { line += " ipv6-problem" }

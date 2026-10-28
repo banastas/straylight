@@ -477,6 +477,19 @@ public final class History: @unchecked Sendable {
     private var timer: DispatchSourceTimer?
     private var sleepTotal = MachClock.sleepSinceBoot()
 
+    /// Each round's measurements wait here until the queue's own 10 s tick, or
+    /// a read, so recording them costs no wake-up of its own. Minutes are
+    /// written 40 s after they end, so nothing is late.
+    private enum Entry: Sendable {
+        case probe(ProbeRecord)
+        case state(MinuteState, Date)
+    }
+    private struct Inbox {
+        var entries: [Entry] = []
+        var lastState: MinuteState?
+    }
+    private let inbox = OSAllocatedUnfairLock(initialState: Inbox())
+
     /// `nil` keeps the history in memory only.
     public init(url: URL? = History.defaultURL) throws {
         if let url {
@@ -508,38 +521,80 @@ public final class History: @unchecked Sendable {
         queue.sync {
             timer?.cancel()
             timer = nil
+            takeInbox()
             perform { try store.flush(through: .distantFuture, now: Date(), force: true) }
         }
     }
 
     public func record(_ probe: ProbeRecord) {
-        queue.async { [self] in store.record(probe) }
+        inbox.withLock { $0.entries.append(.probe(probe)) }
+        queue.async { [self] in takeInbox() }
+    }
+
+    /// A round's measurements and the state from now on. They're written on
+    /// the next tick or read, not at once.
+    public func record(_ probes: [ProbeRecord], state: MinuteState) {
+        let now = Date()
+        inbox.withLock { inbox in
+            inbox.entries += probes.map(Entry.probe)
+            if state != inbox.lastState {
+                inbox.entries.append(.state(state, now))
+                inbox.lastState = state
+            }
+        }
+    }
+
+    /// On `queue`, before anything else touches the store.
+    private func takeInbox() {
+        let entries = inbox.withLock { inbox in
+            defer { inbox.entries.removeAll(keepingCapacity: true) }
+            return inbox.entries
+        }
+        for entry in entries {
+            switch entry {
+            case .probe(let probe): store.record(probe)
+            case .state(let state, let date): if state != store.state { store.setState(state, now: date) }
+            }
+        }
     }
 
     public func record(_ event: NetworkEvent) {
-        queue.async { [self] in store.record(event) }
+        queue.async { [self] in
+            takeInbox()
+            store.record(event)
+        }
     }
 
     /// Measured, offline, paused or locked, from now on. Asleep is noticed on its own.
     public func setState(_ state: MinuteState) {
-        queue.async { [self] in
-            guard state != store.state else { return }
-            store.setState(state, now: Date())
+        // Through the inbox, so it lands in order with the measurements around it.
+        let now = Date()
+        inbox.withLock { inbox in
+            inbox.entries.append(.state(state, now))
+            inbox.lastState = state
         }
+        queue.async { [self] in takeInbox() }
     }
 
     public func periods(from start: Date, to end: Date) throws -> [PeriodRow] {
-        try queue.sync { try store.periods(from: start, to: end) }
+        try queue.sync {
+            takeInbox()
+            return try store.periods(from: start, to: end)
+        }
     }
 
     public func aggregates(from start: Date, to end: Date) throws -> [AggregateRow] {
-        try queue.sync { try store.aggregates(from: start, to: end) }
+        try queue.sync {
+            takeInbox()
+            return try store.aggregates(from: start, to: end)
+        }
     }
 
     /// The history chart for one target. Writes what has finished first, so
     /// the chart runs up to the minute in progress.
     public func chart(_ range: ChartRange, role: TargetRole, now: Date = Date()) throws -> [ChartBucket] {
         try queue.sync {
+            takeInbox()
             try store.flush(through: now, now: now, force: true)
             let start = now.addingTimeInterval(-range.duration - Double(range.bucketSeconds))
             return HistoryChart.buckets(range, role: role, periods: try store.periods(from: start, to: now),
@@ -550,6 +605,7 @@ public final class History: @unchecked Sendable {
     /// The latest outages and spikes, newest first.
     public func latestEvents(limit: Int) throws -> [NetworkEvent] {
         try queue.sync {
+            takeInbox()
             try store.flush(through: Date(), now: Date(), force: true)
             return try store.latestEvents(limit: limit)
         }
@@ -557,6 +613,7 @@ public final class History: @unchecked Sendable {
 
     public func events(from start: Date, to end: Date) throws -> [NetworkEvent] {
         try queue.sync {
+            takeInbox()
             try store.flush(through: Date(), now: Date(), force: true)
             return try store.events(from: start, to: end)
         }
@@ -566,6 +623,7 @@ public final class History: @unchecked Sendable {
     public func exportAggregates(from start: Date, to end: Date) throws -> String {
         try queue.sync {
             let now = Date()
+            takeInbox()
             try store.flush(through: now, now: now, force: true)
             return try store.aggregatesCSV(from: start, to: end, now: now)
         }
@@ -573,12 +631,14 @@ public final class History: @unchecked Sendable {
 
     public func exportEvents(from start: Date, to end: Date) throws -> String {
         try queue.sync {
+            takeInbox()
             try store.flush(through: Date(), now: Date(), force: true)
             return try store.eventsCSV(from: start, to: end)
         }
     }
 
     private func tick(rssi: Int?) {
+        takeInbox()
         let now = Date()
         let sleep = MachClock.sleepSinceBoot()
         if sleep > sleepTotal {

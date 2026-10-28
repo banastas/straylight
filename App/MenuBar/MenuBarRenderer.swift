@@ -89,7 +89,15 @@ enum MenuBarRenderer {
     /// Plain Core Graphics into canvases kept between ticks. Rasterizing here,
     /// rather than handing AppKit a drawing-handler image, also avoids a CoreText
     /// crash in the status bar's stylized drawing path on macOS 27.
-    static func image(for layout: Layout, appearance: NSAppearance, scale: CGFloat) -> CGImage? {
+    ///
+    /// `colorSpace` should be the status item window's: Core Animation color
+    /// converts every new image drawn in any other space when it commits it.
+    static func image(for layout: Layout, appearance: NSAppearance, scale: CGFloat, colorSpace: CGColorSpace) -> CGImage? {
+        if colorSpace != canvasColorSpace {
+            canvasColorSpace = colorSpace
+            canvases = []
+            glyphCells = [:]
+        }
         let pieces = layout.pieces
         let size = CGSize(
             width: max(1, ceil(pieces.map(width(of:)).reduce(0, +) + gap * CGFloat(max(0, pieces.count - 1)))),
@@ -178,7 +186,7 @@ enum MenuBarRenderer {
         /// it are gone, so a resize can't free pixels an image still uses.
         let provider: CGDataProvider
 
-        init?(pixelWidth: Int, pixelHeight: Int, scale: CGFloat, height: CGFloat) {
+        init?(pixelWidth: Int, pixelHeight: Int, scale: CGFloat, height: CGFloat, colorSpace: CGColorSpace) {
             let bytesPerRow = pixelWidth * 4
             let size = bytesPerRow * pixelHeight
             let buffer = UnsafeMutableRawPointer.allocate(byteCount: size, alignment: 16)
@@ -190,7 +198,7 @@ enum MenuBarRenderer {
             }
             guard let context = CGContext(
                 data: buffer, width: pixelWidth, height: pixelHeight, bitsPerComponent: 8, bytesPerRow: bytesPerRow,
-                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
             ) else { return nil }
             context.scaleBy(x: scale, y: -scale)
             context.translateBy(x: 0, y: -height)
@@ -207,7 +215,7 @@ enum MenuBarRenderer {
         func image() -> CGImage? {
             CGImage(
                 width: context.width, height: context.height, bitsPerComponent: 8, bitsPerPixel: 32,
-                bytesPerRow: context.bytesPerRow, space: CGColorSpaceCreateDeviceRGB(),
+                bytesPerRow: context.bytesPerRow, space: context.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
                 bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
                 provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
             )
@@ -215,6 +223,7 @@ enum MenuBarRenderer {
     }
 
     private static var canvases: [Canvas] = []
+    private static var canvasColorSpace = CGColorSpaceCreateDeviceRGB()
     private static var nextCanvas = 0
     /// The canvas being drawn this tick; text is copied into its buffer.
     private static var drawingCanvas: Canvas?
@@ -222,7 +231,7 @@ enum MenuBarRenderer {
     private static func canvas(size: CGSize, scale: CGFloat) -> Canvas? {
         let pixelWidth = Int(size.width * scale), pixelHeight = Int(size.height * scale)
         if canvases.first.map({ $0.context.width != pixelWidth || $0.context.height != pixelHeight }) ?? true {
-            canvases = (0..<2).compactMap { _ in Canvas(pixelWidth: pixelWidth, pixelHeight: pixelHeight, scale: scale, height: size.height) }
+            canvases = (0..<2).compactMap { _ in Canvas(pixelWidth: pixelWidth, pixelHeight: pixelHeight, scale: scale, height: size.height, colorSpace: canvasColorSpace) }
             guard canvases.count == 2 else { canvases = []; return nil }
         }
         nextCanvas = (nextCanvas + 1) % canvases.count
@@ -438,7 +447,7 @@ enum MenuBarRenderer {
         let height = Int(ceil(lineHeight * scale))
         guard let context = CGContext(
             data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
-            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            space: canvasColorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ), let data = context.data else { return nil }
         let attributed = NSAttributedString(string: String(character), attributes: [
             .font: font,

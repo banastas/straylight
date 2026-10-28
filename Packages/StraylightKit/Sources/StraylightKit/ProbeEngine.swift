@@ -67,7 +67,8 @@ public final class ProbeEngine: @unchecked Sendable {
         self.settings = settings
         self.interval = interval
         self.onEvent = onEvent
-        icmp = ICMPProber(queue: queue) { [unowned self] in handle($0, .icmp) }
+        // Replies are read with each round's tick, not as they arrive (PRD §7.3).
+        icmp = ICMPProber(queue: queue, readsOnArrival: false) { [unowned self] in handle($0, .icmp) }
         tcp = TCPProber(queue: queue) { [unowned self] in handle($0, .tcp) }
         pathMonitor = PathMonitor(queue: queue) { [unowned self] in
             path = $0
@@ -211,6 +212,7 @@ public final class ProbeEngine: @unchecked Sendable {
         let generation = generation
         queue.asyncAfter(deadline: .now() + Self.tickDelay) { [self] in
             guard generation == self.generation else { return }
+            icmp.collect()
             onEvent(.tick)
         }
     }
