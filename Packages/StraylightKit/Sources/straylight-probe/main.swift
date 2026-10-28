@@ -8,6 +8,7 @@
 //   straylight-probe --path                   the network path and the targets planned for it
 //   straylight-probe --watch 120              run the probe engine and print its events
 //   straylight-probe --watch 30 --hosts github.com,8.8.8.8   with other internet hosts
+//   straylight-probe --monitor 120 -i 5      stats, states and the verdict after each round
 
 import Darwin
 import Dispatch
@@ -23,6 +24,7 @@ struct Options {
     var ttl: Int32?
     var showPath = false
     var watch: Double?
+    var monitor: Double?
     var hosts: [String]?
 
     init(_ arguments: [String]) {
@@ -37,6 +39,7 @@ struct Options {
             case "--path": showPath = true
             case "--hosts": hosts = arguments.popFirst()?.split(separator: ",").map(String.init)
             case "--watch": watch = arguments.popFirst().flatMap(Double.init) ?? 60
+            case "--monitor": monitor = arguments.popFirst().flatMap(Double.init) ?? 60
             default: host = argument
             }
         }
@@ -91,6 +94,8 @@ if let seconds = options.watch {
             case .late(let milliseconds): String(format: "late %.3f ms", milliseconds)
             }
             print("\(time) result \(role) \(probeProtocol) \(outcome)")
+        case .tick:
+            break
         }
     }
     engine.start()
@@ -101,9 +106,45 @@ if let seconds = options.watch {
     dispatchMain()
 }
 
+func ms(_ value: Double?) -> String {
+    value.map { String(format: "%.2f", $0) } ?? "-"
+}
+
+if let seconds = options.monitor {
+    let started = Date()
+    var settings = TargetSettings()
+    if let hosts = options.hosts { settings.internetHosts = hosts }
+    let monitor = Monitor(settings: settings, interval: options.interval) { update in
+        let time = String(format: "%7.2f", Date().timeIntervalSince(started))
+        switch update {
+        case .snapshot(let snapshot):
+            var line = "\(time) \(snapshot.verdict)"
+            if let internet = snapshot.internet { line += " internet=\(internet)" }
+            if snapshot.ipv6Problem { line += " ipv6-problem" }
+            print(line)
+            for target in snapshot.targets {
+                let m = target.metrics
+                var detail = "\(target.status) \(target.state) now \(ms(m.latest)) med \(ms(m.median)) p95 \(ms(m.p95)) base \(ms(m.baseline)) jit \(ms(m.jitter)) lost \(m.lost)/\(m.sent)"
+                if m.late > 0 { detail += " late \(m.late)" }
+                if target.answeredLocally { detail += " answered-locally" }
+                if let since = target.outageSince { detail += " down since \(String(format: "%.1f", since.timeIntervalSince(started))) s" }
+                print("          \(target.target.role) \(target.target.address): \(detail)")
+            }
+        case .event(let event):
+            print("\(time) EVENT \(event.kind) \(event.role) \(event.address) at \(String(format: "%.1f", event.start.timeIntervalSince(started))) s for \(String(format: "%.1f", event.duration)) s" + (event.worstRTT.map { ", worst \(ms($0)) ms" } ?? ""))
+        }
+    }
+    monitor.start()
+    DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+        monitor.stop()
+        exit(0)
+    }
+    dispatchMain()
+}
+
 guard !options.host.isEmpty, let target = ProbeAddress.resolve(options.host).first else {
     print("usage: straylight-probe [-c count] [-i seconds] [--tcp [--port n]] [--ttl n] host")
-    print("       straylight-probe --path | --watch [seconds] [-i seconds]")
+    print("       straylight-probe --path | --watch [seconds] | --monitor [seconds] [-i seconds] [--hosts a,b]")
     exit(2)
 }
 

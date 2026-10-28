@@ -89,12 +89,12 @@ Per target, from a ring buffer of recent probes. The **window** is the last 60 s
 | Value | Definition |
 |---|---|
 | RTT now | The latest reply |
-| RTT median / p95 | Over the window, nearest-rank. Over 60 samples, p95 is the 3rd-highest; over 20, it's the highest. |
+| RTT median / p95 | Over the window, nearest-rank. Over 60 samples, p95 is the 57th (the 4th-highest); over 20, the 19th (the 2nd-highest). |
 | Baseline | Minimum RTT since the last network change |
 | Jitter | Mean of \|RTTᵢ − RTTᵢ₋₁\| over consecutive replies in the window, in ms (mean IPDV, unsmoothed; RFC 3550's smoothed jitter isn't used). A pair is skipped when a lost probe falls between the two replies. |
 | Loss | Lost ÷ sent over the window, in %. Lost and sent counts are also kept. |
 
-Each target is **OK**, **Bad** (any threshold below crossed), or **Down** (an outage in progress, see Events). The internet state combines its two hosts: OK if either is OK, Down if both are Down, Bad otherwise. Hosts marked "answered locally" don't count. A target's statistics start over whenever its status changes (end of warm-up, a switch to or from TCP), so the ICMP losses from the warm-up of a host that ends up in TCP mode don't linger.
+Each target is **OK**, **Bad** (any threshold below crossed), or **Down** (an outage in progress, see Events). The internet state combines its two hosts: OK if either is OK, Down if both are Down, Bad otherwise. Hosts marked "answered locally" don't count. A target's statistics start over whenever the protocol it's measured with changes (a switch to or from TCP, or a silent router that starts answering), so the ICMP losses from the warm-up of a host that ends up in TCP mode don't linger. A host that stays on ICMP keeps its warm-up samples. Every target is Measuring during warm-up and until its first probe finishes after a fresh start.
 
 **Verdict**, shown in the popover header and summarized in the menu bar:
 
@@ -107,6 +107,7 @@ Each target is **OK**, **Bad** (any threshold below crossed), or **Down** (an ou
 | Bad | Bad or Down | **Local network problem**: Wi‑Fi or the router |
 | Down | Down | **Local network down**: can't reach the router |
 | doesn't answer ping, or unreachable (VPN) | OK / Bad / Down | **Good** / **Connection problem** / **Connection down**. The header says the router can't be measured, so local and internet can't be told apart. |
+| any | no internet host counts (every one answered locally, or none resolved) | **Can't measure the internet** |
 | no path | no path | **Offline** |
 
 Custom targets have their own cards, events and history, and never affect the verdict.
@@ -118,12 +119,12 @@ Starting thresholds for "Bad" (to be tuned in M7 against a week of real Wi‑Fi 
 | Router | ≥ 2 lost in the window | > 10 ms | > 30 ms |
 | Internet host | ≥ 2 lost in the window | > 30 ms | > 150 ms |
 
-A verdict has to hold for 10 s before it changes, so it doesn't flap.
+A verdict has to hold for 10 s before it changes, so it doesn't flap. The exceptions: the first verdict after a network change and Offline show at once, and a target briefly measuring again (a host switching to TCP) keeps the verdict that's shown.
 
 **Events**:
 
-- **Outage**: no reply from a target for at least 5 s, with at least 3 consecutive probes lost. Logged with start time, duration and target. The target is Down while the outage lasts.
-- **Spike**: RTT above both 3 × the window median and the median + 20 ms, for 3 or more consecutive replies. The median excludes the spike's own samples. Logged with start time, duration and worst RTT.
+- **Outage**: no reply from a target for at least 5 s, with at least 3 consecutive probes lost. Logged with start time, duration and target. The target is Down while the outage lasts. The start is when the first lost probe was sent and the end is when the first probe to get a reply was sent. Losses during warm-up count, but an outage is only declared once warm-up is over, so a host that switches to TCP never logs one. A network change ends an outage in progress at the time of the change.
+- **Spike**: RTT above both 3 × the window median and the median + 20 ms, for 3 or more consecutive replies. The median excludes the spike's own samples and needs at least 5 replies outside them. A rise that fills the window ends the spike: it's the new normal. Lost probes neither extend nor end a spike. Logged with start time, duration and worst RTT; the spike ends when the first normal reply's probe was sent.
 
 ### 6.4 History
 
@@ -244,6 +245,7 @@ straylight/
 │       │   ├── Targets.swift         # target planning, warm-up and TCP fallback rules
 │       │   ├── ProbeEngine.swift     # the probe loop: path changes, wake, warm-up, results
 │       │   ├── Stats.swift           # median, p95, jitter, loss, target states, verdict, events
+│       │   ├── Monitor.swift         # engine results → stats, answered locally, snapshots, events
 │       │   ├── History.swift         # SQLite store, per-minute and hourly aggregates, event log, CSV export
 │       │   ├── WiFi.swift            # CoreWLAN details
 │       │   ├── Diagnostics.swift     # os_log categories, Copy diagnostics
@@ -281,7 +283,8 @@ Tests cover:
 - One send timer with 10 % leeway sends to every target due in the same wake-up. Its interval drops to 1 s during warm-up or while any target is in fast recheck.
 - Replies arrive through a `DispatchSourceRead` on each socket (one IPv4, one IPv6), so nothing polls for replies.
 - Timeouts are checked on the next send tick, not with a separate timer.
-- All socket work runs on one serial queue. The `@Observable` snapshot on the main actor is updated at most once per tick.
+- All socket work runs on one serial queue. The `@Observable` snapshot on the main actor is updated at most once per tick: `Monitor` publishes one 0.25 s after each round of probes, once most replies are in, and one after each network change.
+- Each target keeps its own due time, so on 1 s ticks (warm-up, or another target in fast recheck) a 5 s target is still probed every 5 s. A fast recheck carries on past the end of warm-up.
 - History is appended in memory and flushed to disk once a minute.
 - **App Nap** could stretch the send timer. RTTs wouldn't be affected, because both timestamps are taken at the socket, but probe spacing would. M1 checked this (2026-10-28): over 10 minutes in the background, a 1 s timer with 10 % leeway fired 600 times, 958–1074 ms apart (median 1000.0 ms, p99 1039 ms), never past the leeway. No `ProcessInfo` activity is needed. Recheck on battery in M7.
 
@@ -339,6 +342,14 @@ Checked before each release with Instruments and with a tick profiler: run the b
 The minimums to 1.1.1.1 agree within 0.02 ms, and `ping` times the same way straylight does (a stamp just before `sendto`, a kernel timestamp on receive, no traffic class by default). The difference looks like Cloudflare's path treating the two tools' packets differently, not a timing error, but the cause hasn't been found. Recheck in M2 with two internet hosts. Not yet run: the after-sleep check (this Mac hadn't slept since boot, so the two clocks were still equal) and the loss check (needs Network Link Conditioner).
 
 **M2 results (2026-10-28, same Mac).** The router from the dynamic store matched `route -n get default` exactly (192.168.20.1 on en7). `straylight-probe --watch` showed warm-up end at 10 s with every target on ICMP. With amazon.com, which drops ping but accepts HTTPS, as the primary host, the TCP check succeeded during warm-up and the host switched to TCP timing (about 68 ms) with no ICMP results reported after the switch. Not yet tried, because they need hands on the network: Wi‑Fi ↔ Ethernet switching, a VPN as the primary interface (this Mac has a non-primary `utun4`), an IPv6-only network, and sleep/wake.
+
+**M3 results (2026-10-28, same Mac).** `straylight-probe --monitor` ran the stats and verdict live:
+
+- At 1 s, the verdict went from Measuring to Good at 10.9 s and held for 80 s. Windows held 60 probes. Medians: router 0.42 ms, 1.1.1.1 6.79 ms, 8.8.8.8 5.55 ms, no loss.
+- At 5 s, rounds came every 5.0 s after warm-up and windows held 20 probes.
+- With a never-answering second host (192.0.2.1), that host was Down from the end of warm-up, probed every second (fast recheck), and the verdict stayed Good on 1.1.1.1. With both hosts unreachable, the verdict was Internet down at 10.9 s and the TCP check didn't switch either host.
+
+Not yet run: a real outage (unplugging the router's WAN) and the loss check.
 
 ## 10. Accessibility and localization
 

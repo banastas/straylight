@@ -121,7 +121,7 @@ import Testing
         var tracker = TargetTracker(target: target, isVPN: isVPN, now: 0)
         var sentTCP = false
         for second in 0..<10 {
-            let sends = tracker.sends(now: Double(second), routerAnswered: routerAnswered, sinceLastCheck: 0)
+            let sends = tracker.sends(now: Double(second), interval: 1, routerAnswered: routerAnswered, sinceLastCheck: 0)
             if sends.icmp { _ = tracker.recordICMP(replied: icmp) }
             if sends.tcp {
                 sentTCP = true
@@ -166,8 +166,8 @@ import Testing
         tracker.recordTCP(replied: true)
         _ = tracker.finishWarmUpIfDue(now: 10)
         #expect(tracker.status == .tcp)
-        #expect(tracker.sends(now: 20, routerAnswered: true, sinceLastCheck: 10) == .init(icmp: false, tcp: true, icmpIsCheck: true))
-        #expect(tracker.sends(now: 70, routerAnswered: true, sinceLastCheck: 60).icmp)
+        #expect(tracker.sends(now: 20, interval: 1, routerAnswered: true, sinceLastCheck: 10) == .init(icmp: false, tcp: true, icmpIsCheck: true))
+        #expect(tracker.sends(now: 70, interval: 1, routerAnswered: true, sinceLastCheck: 60).icmp)
 
         #expect(tracker.recordICMP(replied: true) == nil)
         #expect(tracker.recordICMP(replied: false) == nil)
@@ -180,7 +180,7 @@ import Testing
         var tracker = TargetTracker(target: router, isVPN: false, now: 0)
         _ = tracker.finishWarmUpIfDue(now: 10)
         #expect(tracker.status == .doesntAnswerPing)
-        #expect(tracker.sends(now: 30, routerAnswered: false, sinceLastCheck: 20) == .init(icmpIsCheck: true))
+        #expect(tracker.sends(now: 30, interval: 1, routerAnswered: false, sinceLastCheck: 20) == .init(icmpIsCheck: true))
         #expect(tracker.recordICMP(replied: true) == .icmp)
     }
 }

@@ -107,6 +107,15 @@ public enum TargetStatus: Equatable, Sendable {
     case doesntAnswerPing
     /// The router can't be reached because the VPN blocks local traffic.
     case unreachableVPN
+
+    /// What the target is measured with; nil when it isn't measured.
+    public var measuredProtocol: ProbeEngine.ProbeProtocol? {
+        switch self {
+        case .warmingUp, .icmp: .icmp
+        case .tcp: .tcp
+        case .doesntAnswerPing, .unreachableVPN: nil
+        }
+    }
 }
 
 /// The warm-up and fallback rules for one target, without sockets or timers so
@@ -119,6 +128,11 @@ struct TargetTracker {
     static let recheckInterval = 60.0
     /// ICMP replies in a row that end TCP mode.
     static let repliesToLeaveTCP = 3
+    /// Replies in a row that end a fast recheck.
+    static let repliesToEndRecheck = 3
+    /// A probe counts as due this much before its interval is up, so a 5 s
+    /// target probed on 1 s ticks isn't pushed to the 6th tick by timer leeway.
+    static let dueTolerance = 0.5
 
     let target: Target
     let isVPN: Bool
@@ -127,6 +141,10 @@ struct TargetTracker {
     private(set) var icmpReplies = 0
     private(set) var tcpReplies = 0
     private var consecutiveICMPReplies = 0
+    /// Probing every second after a lost probe, until 3 replies in a row (PRD §6.2).
+    private(set) var isRechecking = false
+    private var recheckReplies = 0
+    private var lastSent: Double?
 
     init(target: Target, isVPN: Bool, now: Double) {
         self.target = target
@@ -146,19 +164,42 @@ struct TargetTracker {
     }
 
     /// - Parameters:
+    ///   - interval: seconds between measurements outside warm-up and fast recheck.
     ///   - routerAnswered: whether the router has replied to ICMP since the network change.
     ///   - sinceLastCheck: seconds since this target's last ICMP check, in TCP mode or while the router doesn't answer.
-    func sends(now: Double, routerAnswered: Bool, sinceLastCheck: Double) -> Sends {
+    func sends(now: Double, interval: Double, routerAnswered: Bool, sinceLastCheck: Double) -> Sends {
+        let isDue = isRechecking || now - (lastSent ?? -.infinity) >= interval - Self.dueTolerance
         switch status {
         case .warmingUp:
             let tryTCP = target.role.isInternet && icmpReplies == 0 && routerAnswered && now - startedAt >= Self.tcpCheckAfter
             return Sends(icmp: true, tcp: tryTCP, tcpIsCheck: tryTCP)
         case .icmp:
-            return Sends(icmp: true)
+            return Sends(icmp: isDue)
         case .tcp:
-            return Sends(icmp: sinceLastCheck >= Self.recheckInterval, tcp: true, icmpIsCheck: true)
+            return Sends(icmp: sinceLastCheck >= Self.recheckInterval, tcp: isDue, icmpIsCheck: true)
         case .doesntAnswerPing, .unreachableVPN:
             return Sends(icmp: sinceLastCheck >= Self.recheckInterval, icmpIsCheck: true)
+        }
+    }
+
+    /// Whether this target needs the 1 s tick.
+    var needsFastTicks: Bool {
+        status == .warmingUp || isRechecking
+    }
+
+    /// Records that a measurement probe went out.
+    mutating func didSend(now: Double) {
+        lastSent = now
+    }
+
+    /// Records a measurement's outcome, for fast recheck. Check probes don't count.
+    mutating func recordMeasurement(replied: Bool, interval: Double) {
+        if !replied {
+            isRechecking = interval > 1
+            recheckReplies = 0
+        } else if isRechecking {
+            recheckReplies += 1
+            if recheckReplies >= Self.repliesToEndRecheck { isRechecking = false }
         }
     }
 
@@ -170,7 +211,7 @@ struct TargetTracker {
         case .tcp where consecutiveICMPReplies >= Self.repliesToLeaveTCP,
              .doesntAnswerPing where replied,
              .unreachableVPN where replied:
-            status = .icmp
+            setStatus(.icmp)
             return status
         default:
             return nil
@@ -185,15 +226,24 @@ struct TargetTracker {
     mutating func finishWarmUpIfDue(now: Double) -> TargetStatus? {
         guard status == .warmingUp, now - startedAt >= Self.warmUpDuration else { return nil }
         if icmpReplies > 0 {
-            status = .icmp
+            setStatus(.icmp)
         } else if target.role == .router {
-            status = isVPN ? .unreachableVPN : .doesntAnswerPing
+            setStatus(isVPN ? .unreachableVPN : .doesntAnswerPing)
         } else if target.role.isInternet, tcpReplies > 0 {
             // TCP works where ICMP doesn't. ICMP failing alone is an outage, not a reason to switch.
-            status = .tcp
+            setStatus(.tcp)
         } else {
-            status = .icmp
+            setStatus(.icmp)
         }
         return status
+    }
+
+    /// A fast recheck carries on past the end of warm-up, but not into another protocol.
+    private mutating func setStatus(_ status: TargetStatus) {
+        if status.measuredProtocol != self.status.measuredProtocol {
+            isRechecking = false
+            recheckReplies = 0
+        }
+        self.status = status
     }
 }

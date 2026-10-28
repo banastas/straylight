@@ -22,7 +22,13 @@ public final class ProbeEngine: @unchecked Sendable {
         /// A measurement in the target's current mode. Check probes (TCP during
         /// warm-up, the once-a-minute ICMP retry) aren't reported.
         case result(TargetRole, ProbeProtocol, ProbeResult)
+        /// A quarter second after each round of probes, once most replies are in.
+        /// Time-based checks and snapshots hang off it.
+        case tick
     }
+
+    /// How long after a round of probes `.tick` is sent.
+    static let tickDelay = 0.25
 
     private struct ProbeKey: Hashable {
         let probeProtocol: ProbeProtocol
@@ -98,7 +104,7 @@ public final class ProbeEngine: @unchecked Sendable {
         queue.async { [self] in
             self.interval = interval
             guard !order.isEmpty else { return }
-            setTimer(trackers.values.contains { $0.status == .warmingUp } ? 1 : interval)
+            setTimer(tickInterval)
         }
     }
 
@@ -147,6 +153,11 @@ public final class ProbeEngine: @unchecked Sendable {
 
     // MARK: - Ticks
 
+    /// 1 s during warm-up or while any target is in fast recheck.
+    private var tickInterval: Double {
+        trackers.values.contains(where: \.needsFastTicks) ? min(1, interval) : interval
+    }
+
     private func setTimer(_ seconds: Double?) {
         guard seconds != timerInterval else { return }
         timer?.cancel()
@@ -188,7 +199,10 @@ public final class ProbeEngine: @unchecked Sendable {
                 trackers[role] = tracker
                 statusChanged(role, status, now: now)
             }
-            let sends = tracker.sends(now: now, routerAnswered: routerAnswered, sinceLastCheck: now - (lastCheck[role] ?? now))
+            let sends = tracker.sends(now: now, interval: interval, routerAnswered: routerAnswered, sinceLastCheck: now - (lastCheck[role] ?? now))
+            if (sends.icmp && !sends.icmpIsCheck) || (sends.tcp && !sends.tcpIsCheck) {
+                trackers[role]?.didSend(now: now)
+            }
             if sends.icmp {
                 send(.icmp, to: tracker.target, isCheck: sends.icmpIsCheck, now: now)
                 if sends.icmpIsCheck { lastCheck[role] = now }
@@ -199,7 +213,12 @@ public final class ProbeEngine: @unchecked Sendable {
         }
 
         sent = sent.filter { now - $0.value.sentAt < 60 }
-        setTimer(trackers.values.contains { $0.status == .warmingUp } ? 1 : interval)
+        setTimer(tickInterval)
+        let generation = generation
+        queue.asyncAfter(deadline: .now() + Self.tickDelay) { [self] in
+            guard generation == self.generation else { return }
+            onEvent(.tick)
+        }
     }
 
     private func send(_ probeProtocol: ProbeProtocol, to target: Target, isCheck: Bool, now: Double) {
@@ -244,24 +263,22 @@ public final class ProbeEngine: @unchecked Sendable {
             return
         }
 
+        if isMeasurement { tracker.recordMeasurement(replied: replied, interval: interval) }
+        var status: TargetStatus?
         switch probeProtocol {
         case .icmp:
             if role == .router, replied { routerAnswered = true }
-            let status = tracker.recordICMP(replied: replied)
-            trackers[role] = tracker
-            if let status { statusChanged(role, status, now: now) }
+            status = tracker.recordICMP(replied: replied)
         case .tcp:
             tracker.recordTCP(replied: replied)
-            trackers[role] = tracker
         }
+        trackers[role] = tracker
+        // The result goes out before a status change, which starts the target's statistics over.
         if isMeasurement { onEvent(.result(role, probeProtocol, result)) }
+        if let status { statusChanged(role, status, now: now) }
     }
 
     private static func measures(_ status: TargetStatus, _ probeProtocol: ProbeProtocol) -> Bool {
-        switch status {
-        case .warmingUp, .icmp: probeProtocol == .icmp
-        case .tcp: probeProtocol == .tcp
-        case .doesntAnswerPing, .unreachableVPN: false
-        }
+        status.measuredProtocol == probeProtocol
     }
 }
