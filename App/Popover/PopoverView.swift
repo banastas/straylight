@@ -102,8 +102,38 @@ private struct HeaderView: View {
     @Environment(\.accent) private var accent
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            nameRow
+            verdict
+        }
+    }
+
+    /// The name and the network, as in flatline's header.
+    private var nameRow: some View {
+        let path = model.snapshot.path
+        return HStack(spacing: 6) {
+            Image(systemName: "dot.radiowaves.right")
+                .font(.headline)
+                .accessibilityHidden(true)
+            Text(verbatim: "straylight")
+                .font(.headline)
+            Spacer()
+            if path.isSatisfied {
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(path.kind.title)
+                    if let address = model.localAddress { Text(address) }
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .foregroundStyle(accent)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var verdict: some View {
         let snapshot = model.snapshot
-        VStack(alignment: .leading, spacing: 4) {
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: symbol)
                     .foregroundStyle(color)
@@ -123,10 +153,8 @@ private struct HeaderView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if snapshot.path.isSatisfied {
+            if snapshot.path.isSatisfied, snapshot.path.isVPN || snapshot.ipv6Problem {
                 HStack(spacing: 6) {
-                    Text(pathLine)
-                        .foregroundStyle(.secondary)
                     if snapshot.path.isVPN { Badge(text: String(localized: "via VPN")) }
                     if snapshot.ipv6Problem { Badge(text: String(localized: "IPv6 problem"), color: .orange) }
                 }
@@ -162,17 +190,6 @@ private struct HeaderView: View {
         case .internetProblem, .localProblem, .connectionProblem, .internetUnmeasured: return .orange
         case .internetDown, .localDown, .connectionDown: return .red
         }
-    }
-
-    /// "Wi‑Fi · 192.168.20.34 · router 192.168.20.1"
-    private var pathLine: String {
-        let path = model.snapshot.path
-        var parts = [path.kind.title]
-        if let address = model.localAddress { parts.append(address) }
-        if let router = path.routerIPv4 ?? path.routerIPv6 {
-            parts.append(String(localized: "router \(router.description)"))
-        }
-        return parts.joined(separator: " · ")
     }
 }
 

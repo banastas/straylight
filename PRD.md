@@ -161,7 +161,7 @@ When the primary interface is Wi‑Fi, CoreWLAN (`CWWiFiClient.shared().interfac
 
 A single scrolling panel about 340 pt wide, built with SwiftUI.
 
-1. **Header**: the verdict in words (e.g. "Internet problem: router is fine, 8 % loss to 1.1.1.1 and 8.8.8.8"), interface type, local IP, router IP, "via VPN" and "IPv6 problem" when relevant.
+1. **Header**: the name in the accent color, as in flatline, with the interface type and local IP on the right; then the verdict in words (e.g. "Internet problem: router is fine, 8 % loss to 1.1.1.1 and 8.8.8.8"), and "via VPN" and "IPv6 problem" when relevant. The router's IP is in its card.
 2. **Target cards** (Router, Internet, any custom targets): large RTT now; median, p95, baseline, jitter, loss; a 60-second trace with lost probes marked. The internet card has a row per host (and the IPv6 row), and labels hosts in TCP mode or answered locally.
 3. **History**: 1 h, 24 h or 7 d chart of median and p95, with loss as bars under the baseline, RSSI as a faint line when on Wi‑Fi, so "loss went up when the signal dropped" is visible, and paused/locked/asleep gaps shaded and labeled.
 4. **Wi‑Fi card**: RSSI, noise, signal-to-noise, transmit rate, band and channel width.
