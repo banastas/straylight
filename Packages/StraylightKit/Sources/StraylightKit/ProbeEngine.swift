@@ -9,7 +9,7 @@ import Dispatch
 /// flight are discarded (never counted as lost), targets are re-resolved and
 /// warm-up starts again.
 public final class ProbeEngine: @unchecked Sendable {
-    public enum ProbeProtocol: Sendable, Equatable {
+    public enum ProbeProtocol: String, Sendable, Equatable {
         case icmp, tcp
     }
 
@@ -76,7 +76,7 @@ public final class ProbeEngine: @unchecked Sendable {
 
     public func start() {
         queue.async { [self] in
-            sleepTotal = Self.sleepSinceBoot()
+            sleepTotal = MachClock.sleepSinceBoot()
             pathMonitor.start()
         }
     }
@@ -171,18 +171,8 @@ public final class ProbeEngine: @unchecked Sendable {
         timer.activate()
     }
 
-    /// The time the Mac has spent asleep since boot. It grows only across a
-    /// sleep, which is how a wake is noticed without AppKit.
-    private static func sleepSinceBoot() -> UInt64 {
-        // Absolute first: read the other way round, the two can come out a few
-        // ticks apart in the wrong direction when the Mac has never slept.
-        let absolute = mach_absolute_time()
-        let continuous = mach_continuous_time()
-        return continuous > absolute ? continuous - absolute : 0
-    }
-
     private func tick() {
-        let sleep = Self.sleepSinceBoot()
+        let sleep = MachClock.sleepSinceBoot()
         if sleep > sleepTotal, sleep - sleepTotal > MachClock.ticks(seconds: 1) {
             sleepTotal = sleep
             replan()

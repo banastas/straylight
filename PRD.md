@@ -128,12 +128,13 @@ A verdict has to hold for 10 s before it changes, so it doesn't flap. The except
 
 ### 6.4 History
 
-- **Per-minute aggregates** per target for the last 7 days, then **hourly rollups** for the rest of the history retention period (30 days by default; 7, 30 or 90 in Settings). Each row has sent, lost and late counts, median RTT, p95, jitter, and Wi‑Fi RSSI when on Wi‑Fi.
-- **Every minute has a state**: measured, paused, locked, asleep, offline, or not running (the app wasn't open). Gaps are never shown or exported as outages, and ISP evidence isn't missing without explanation.
+- **Per-minute aggregates** per target for the last 7 days, then **hourly rollups** for the rest of the history retention period (30 days by default; 7, 30 or 90 in Settings). Each row has sent, lost and late counts, median RTT, p95, jitter, and Wi‑Fi RSSI when on Wi‑Fi (the median of the samples in that minute or hour). Probes count in the minute they were sent in, so a late reply lands in the right minute. An hour's median is the median of its minutes' medians, its p95 the p95 of their p95s, and its jitter their mean weighted by replies; these are approximations, since the per-probe RTTs aren't kept.
+- A host that switches to TCP during warm-up doesn't record its warm-up ICMP losses, the same rule as the stats (§6.3).
+- **Every minute has a state**: measured, paused, locked, asleep, offline, or not running (the app wasn't open). Gaps are never shown or exported as outages, and ISP evidence isn't missing without explanation. A minute with any measurement is measured; otherwise it takes the last state set during it. Sleep is noticed from the clock gap (§6.2) and marks the minutes it covered. Not running is never stored: it's any minute with no row. An hour is measured if any of its minutes was, and otherwise takes the most common state.
 - **Event log** (outages and spikes) for the history retention period.
-- Stored in an SQLite database (the system `libsqlite3`) in `~/Library/Application Support/straylight/`, written at most once a minute, so history survives restarts.
+- Stored in an SQLite database (the system `libsqlite3`) at `~/Library/Application Support/straylight/history.sqlite`, written at most once a minute, so history survives restarts. A minute is written 40 s after it ends, once no late reply can still land in it (2 s timeout plus the 30 s late window); everything, including the minute in progress, is written on quit. A minute written twice (a restart within it) adds up its counts. Rollups and pruning run once an hour.
 - **Export CSV** from the popover: aggregates or events for a chosen time range, for sending to an ISP. Timestamps are ISO 8601 with the local UTC offset.
-  - Aggregates: `minute, state, target, address, protocol, sent, lost, late, loss_pct, median_ms, p95_ms, jitter_ms, rssi_dbm`
+  - Aggregates: `start, period_s, state, target, address, protocol, sent, lost, late, loss_pct, median_ms, p95_ms, jitter_ms, rssi_dbm`. `period_s` is 60, or 3600 for hourly rows. Every minute (or hour, beyond the 7 days of detail) in the range has at least one row; one without measurements has only its state and RSSI. The range ends at the current minute. `target` is the host as configured, or `router`.
   - Events: `start, end, duration_s, type, target, address, worst_rtt_ms`
   - The Mac's own IP addresses aren't included. Target addresses, including the router's, are.
 
@@ -247,6 +248,7 @@ straylight/
 │       │   ├── Stats.swift           # median, p95, jitter, loss, target states, verdict, events
 │       │   ├── Monitor.swift         # engine results → stats, answered locally, snapshots, events
 │       │   ├── History.swift         # SQLite store, per-minute and hourly aggregates, event log, CSV export
+│       │   ├── Database.swift        # a small wrapper over the system SQLite library
 │       │   ├── WiFi.swift            # CoreWLAN details
 │       │   ├── Diagnostics.swift     # os_log categories, Copy diagnostics
 │       │   ├── RingBuffer.swift      # from flatline (see §13)
@@ -350,6 +352,8 @@ The minimums to 1.1.1.1 agree within 0.02 ms, and `ping` times the same way stra
 - With a never-answering second host (192.0.2.1), that host was Down from the end of warm-up, probed every second (fast recheck), and the verdict stayed Good on 1.1.1.1. With both hosts unreachable, the verdict was Internet down at 10.9 s and the TCP check didn't switch either host.
 
 Not yet run: a real outage (unplugging the router's WAN) and the loss check.
+
+**M4 results (2026-10-28, same Mac).** `straylight-probe --monitor 150 --history` recorded 2.5 minutes, and `--export` produced the CSV. The first minute had 25 probes per target, warm-up included (the run started 25 s before its end), the next two had 60, and the minutes before the run were exported as `not_running`. Rollups, retention, minute states, sleep marking, restarts within a minute and both CSV formats are covered by unit tests against an in-memory database. Not yet tried on a real sleep. The app doesn't record history yet: it gets the monitor in M5.
 
 ## 10. Accessibility and localization
 

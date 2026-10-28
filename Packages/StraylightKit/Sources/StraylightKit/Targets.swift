@@ -26,6 +26,32 @@ public enum TargetRole: Hashable, Sendable, CustomStringConvertible {
         }
     }
 
+    /// Parses `description`, as stored in the history database.
+    public init?(_ description: String) {
+        switch description {
+        case "router": self = .router
+        case "internet-ipv6": self = .internetIPv6
+        default:
+            let parts = description.split(whereSeparator: { "[]".contains($0) })
+            guard parts.count == 2, let index = Int(parts[1]) else { return nil }
+            switch parts[0] {
+            case "internet": self = .internet(index)
+            case "custom": self = .custom(index)
+            default: return nil
+            }
+        }
+    }
+
+    /// Plan order: router, internet hosts, the primary host over IPv6, custom targets.
+    var rank: Int {
+        switch self {
+        case .router: 0
+        case .internet(let index): 1 + index
+        case .internetIPv6: 3
+        case .custom(let index): 4 + index
+        }
+    }
+
     public var description: String {
         switch self {
         case .router: "router"

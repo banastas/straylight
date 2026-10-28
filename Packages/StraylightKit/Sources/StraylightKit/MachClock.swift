@@ -24,4 +24,14 @@ public enum MachClock {
     public static func ticks(seconds: Double) -> UInt64 {
         UInt64(seconds * 1_000_000_000 * timebase.denom / timebase.numer)
     }
+
+    /// Time the Mac has spent asleep since boot, in ticks. It grows only across
+    /// a sleep, which is how a wake is noticed without AppKit.
+    public static func sleepSinceBoot() -> UInt64 {
+        // Absolute first: read the other way round, the two can come out a few
+        // ticks apart in the wrong direction when the Mac has never slept.
+        let absolute = mach_absolute_time()
+        let continuous = mach_continuous_time()
+        return continuous > absolute ? continuous - absolute : 0
+    }
 }

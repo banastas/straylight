@@ -81,12 +81,18 @@ struct TargetStats {
         metrics.lost = samples.count - replies.count
         metrics.late = lateTimes.count
 
+        metrics.jitter = Self.jitter(samples)
+        return metrics
+    }
+
+    /// Mean |RTTᵢ − RTTᵢ₋₁| over consecutive replies in send order, skipping
+    /// pairs split by a loss. nil without two replies in a row.
+    static func jitter(_ samples: [Sample]) -> Double? {
         var differences: [Double] = []
         for (previous, next) in zip(samples, samples.dropFirst()) {
             if let a = previous.rtt, let b = next.rtt { differences.append(abs(b - a)) }
         }
-        metrics.jitter = differences.isEmpty ? nil : differences.reduce(0, +) / Double(differences.count)
-        return metrics
+        return differences.isEmpty ? nil : differences.reduce(0, +) / Double(differences.count)
     }
 
     /// Nearest-rank percentile of an ascending list: over 60 values p95 is the

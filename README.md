@@ -56,7 +56,7 @@ swift test --package-path Packages/StraylightKit
 swift run --package-path Packages/StraylightKit -c release straylight-probe -c 60 1.1.1.1
 ```
 
-`--monitor 120` runs the whole measuring pipeline for two minutes and prints the verdict and each target's stats after every round. Its source lists the other options.
+`--monitor 120` runs the whole measuring pipeline for two minutes and prints the verdict and each target's stats after every round. Add `--history file.sqlite` to record history there, and `--export file.sqlite 30` prints the CSV for the last 30 minutes. Its source lists the other options.
 
 Debug builds are ad-hoc signed and run on any Mac. Release builds are signed with the maintainer's Developer ID.
 

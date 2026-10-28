@@ -9,6 +9,8 @@
 //   straylight-probe --watch 120              run the probe engine and print its events
 //   straylight-probe --watch 30 --hosts github.com,8.8.8.8   with other internet hosts
 //   straylight-probe --monitor 120 -i 5      stats, states and the verdict after each round
+//   straylight-probe --monitor 600 --history /tmp/h.sqlite   also record history there
+//   straylight-probe --export /tmp/h.sqlite 30               CSV of the last 30 minutes
 
 import Darwin
 import Dispatch
@@ -25,6 +27,8 @@ struct Options {
     var showPath = false
     var watch: Double?
     var monitor: Double?
+    var history: String?
+    var export: String?
     var hosts: [String]?
 
     init(_ arguments: [String]) {
@@ -40,6 +44,8 @@ struct Options {
             case "--hosts": hosts = arguments.popFirst()?.split(separator: ",").map(String.init)
             case "--watch": watch = arguments.popFirst().flatMap(Double.init) ?? 60
             case "--monitor": monitor = arguments.popFirst().flatMap(Double.init) ?? 60
+            case "--history": history = arguments.popFirst()
+            case "--export": export = arguments.popFirst()
             default: host = argument
             }
         }
@@ -110,14 +116,28 @@ func ms(_ value: Double?) -> String {
     value.map { String(format: "%.2f", $0) } ?? "-"
 }
 
+if let path = options.export {
+    let history = try History(url: URL(filePath: path))
+    let minutes = Double(options.host) ?? 60
+    let start = Date().addingTimeInterval(-minutes * 60)
+    print(try history.exportAggregates(from: start, to: Date()), terminator: "")
+    print(try history.exportEvents(from: start, to: Date()), terminator: "")
+    exit(0)
+}
+
 if let seconds = options.monitor {
+    let history = try options.history.map { try History(url: URL(filePath: $0)) }
+    history?.start()
     let started = Date()
     var settings = TargetSettings()
     if let hosts = options.hosts { settings.internetHosts = hosts }
     let monitor = Monitor(settings: settings, interval: options.interval) { update in
         let time = String(format: "%7.2f", Date().timeIntervalSince(started))
         switch update {
+        case .probe(let probe):
+            history?.record(probe)
         case .snapshot(let snapshot):
+            history?.setState(snapshot.path.isSatisfied ? .measured : .offline)
             var line = "\(time) \(snapshot.verdict)"
             if let internet = snapshot.internet { line += " internet=\(internet)" }
             if snapshot.ipv6Problem { line += " ipv6-problem" }
@@ -131,12 +151,14 @@ if let seconds = options.monitor {
                 print("          \(target.target.role) \(target.target.address): \(detail)")
             }
         case .event(let event):
+            history?.record(event)
             print("\(time) EVENT \(event.kind) \(event.role) \(event.address) at \(String(format: "%.1f", event.start.timeIntervalSince(started))) s for \(String(format: "%.1f", event.duration)) s" + (event.worstRTT.map { ", worst \(ms($0)) ms" } ?? ""))
         }
     }
     monitor.start()
     DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
         monitor.stop()
+        history?.close()
         exit(0)
     }
     dispatchMain()

@@ -46,6 +46,8 @@ struct MonitorCore {
         var stats = TargetStats()
         var outage = OutageDetector()
         var spike = SpikeDetector()
+        /// Measurements during warm-up, held until it's clear the target stays on ICMP.
+        var warmUpProbes: [ProbeRecord] = []
 
         var thresholds: Thresholds { target.role == .router ? .router : .internet }
     }
@@ -55,6 +57,8 @@ struct MonitorCore {
     private(set) var records: [Record] = []
     private var installed = false
     private var filter = VerdictFilter()
+    /// Measurements for history, taken with `takeProbes()`.
+    private var probes: [ProbeRecord] = []
 
     init(date: @escaping (Double) -> Date) {
         self.date = date
@@ -74,8 +78,14 @@ struct MonitorCore {
         guard let index = index(of: role) else { return [] }
         let old = records[index].status
         records[index].status = status
+        let sameProtocol = old.measuredProtocol != nil && old.measuredProtocol == status.measuredProtocol
+        if old == .warmingUp, status != .warmingUp {
+            // A host that ends up on TCP never logs its warm-up ICMP losses.
+            if sameProtocol { probes += records[index].warmUpProbes }
+            records[index].warmUpProbes.removeAll()
+        }
         // The statistics start over unless the target is still measured the same way.
-        guard old.measuredProtocol == nil || old.measuredProtocol != status.measuredProtocol else { return [] }
+        guard !sameProtocol else { return [] }
         let event = endOutage(at: index, now: now)
         records[index].stats = TargetStats()
         records[index].outage = OutageDetector()
@@ -87,6 +97,12 @@ struct MonitorCore {
     mutating func record(_ outcome: ProbeResult.Outcome, for role: TargetRole, sentAt time: Double) -> [NetworkEvent] {
         guard let index = index(of: role) else { return [] }
         let target = records[index].target
+        let probe = ProbeRecord(target: target, probeProtocol: records[index].status.measuredProtocol ?? .icmp, outcome: outcome, sentAt: date(time))
+        if records[index].status == .warmingUp {
+            records[index].warmUpProbes.append(probe)
+        } else {
+            probes.append(probe)
+        }
         var events: [NetworkEvent] = []
         switch outcome {
         case .reply(let rtt):
@@ -151,6 +167,12 @@ struct MonitorCore {
         return snapshot
     }
 
+    /// Measurements since the last call, for history.
+    mutating func takeProbes() -> [ProbeRecord] {
+        defer { probes.removeAll() }
+        return probes
+    }
+
     private func index(of role: TargetRole) -> Int? {
         records.firstIndex { $0.target.role == role }
     }
@@ -174,6 +196,9 @@ public final class Monitor: @unchecked Sendable {
     public enum Update: Sendable, Equatable {
         case snapshot(MonitorSnapshot)
         case event(NetworkEvent)
+        /// Every measurement, for history. Warm-up results come once warm-up
+        /// ends, and only if the target stays on ICMP.
+        case probe(ProbeRecord)
     }
 
     // `core` is touched only from engine callbacks, which all run on the engine's queue.
@@ -213,6 +238,7 @@ public final class Monitor: @unchecked Sendable {
         case .tick:
             onUpdate(.snapshot(core.tick(now: now)))
         }
+        for probe in core.takeProbes() { onUpdate(.probe(probe)) }
     }
 
     private func publish(_ events: [NetworkEvent]) {
