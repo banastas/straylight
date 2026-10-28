@@ -17,6 +17,7 @@ enum StraylightApp {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let preferences = Preferences()
+    private let updater = Updater()
     private lazy var model = AppModel(preferences: preferences)
     private var statusItem: StatusItemController?
     private var devChecks: DevChecks?
@@ -25,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         quitCleanlyOnSIGTERM()
         model.start()
-        statusItem = StatusItemController(model: model, preferences: preferences)
+        statusItem = StatusItemController(model: model, preferences: preferences, updater: updater)
         statusItem?.showFirstRunIfNeeded()
         devChecks = DevChecks.startIfRequested()
     }

@@ -153,7 +153,7 @@ When the primary interface is Wi‑Fi, CoreWLAN (`CWWiFiClient.shared().interfac
   - `text+trace`
 - **Target shown**: Internet (default), Router, or both as two short stacked traces, with the values stacked as `R 0.4ms` over `I 6.8ms`.
 - The verdict is shown as a mark, not a color: nothing when Good or measuring, `!` for a problem (including Can't measure the internet), `×` for down or Offline, `‖` while paused. Marks are drawn as shapes, not text, and the mark's space is always reserved.
-- Click opens the popover. Right-click or Control-click opens a small menu: Open, Pause for 1 hour, Settings, Check for Updates, Quit. The menu is headed by the verdict. Check for Updates arrives with Sparkle (M9).
+- Click opens the popover. Right-click or Control-click opens a small menu: Open, Pause for 1 hour, Settings, Check for Updates, Quit. The menu is headed by the verdict.
 - **Pause for 1 hour** stops all probes. The trace and value freeze and dim, the mark shows `‖` at full strength, and the menu item becomes "Resume". Resuming starts with warm-up, like a network change. Probing restarts after an hour, on Resume, or on Quit and relaunch. Paused minutes are recorded as paused.
 - VoiceOver reads a summary such as "Good. Internet 23 milliseconds, jitter 4, loss 0 percent. Router 3 milliseconds." While paused: "Paused until 14:32."
 
@@ -178,7 +178,7 @@ Details settled in M6:
 - **Traces** show the last 60 s by send time, so a 5 s interval gives 12 points. A lost probe drops the line to the baseline and gets a tick below it. The internet trace overlays both hosts, the secondary fainter. While warming up the stats show `—`.
 - **History chart**: 1 h is 60 one-minute buckets, 24 h is 144 ten-minute buckets, 7 d is 168 hourly buckets. Each bucket combines its rows like the hourly rollups (median of medians, p95 of p95s, loss from the summed counts, median RSSI) and is measured if any of it was, otherwise the state that covered most of it. Time with no row is not running, except the minute in progress. The chart is for the primary internet host or the router, picked in the card. Loss bars reach full height at 10 %, and any loss gets at least a sliver. RSSI is scaled from −90 dBm at the bottom to −30 at the top. Gaps are labeled when the label fits. The chart reloads every minute while open.
 - **Export CSV** offers measurements or events for the last hour, 24 hours, 7 days, or everything kept (the retention period), then a save panel.
-- The footer's update indicator arrives with Sparkle (M9).
+- The footer's update indicator: when a scheduled check finds a version, the footer shows "update 0.2.0" in place of the version number until it's installed or dismissed; clicking it opens Sparkle's update window.
 
 ### 6.8 First run
 
@@ -198,7 +198,7 @@ Both are off by default. Details settled in M7:
 
 ### 6.10 Settings
 
-Shown in the popover (an inline settings panel, as in flatline), stored in `UserDefaults`. Since M7 the panel has everything below except automatic updates, which arrive with Sparkle (M9). Changes apply at once: target changes re-plan and warm up like a network change, and a typed host applies on Return or when its field loses focus, so targets aren't re-resolved on every keystroke. A secondary host the same as the primary is left out. When the battery interval is in use, the panel says why (on battery, Low Power Mode, Low Data Mode, or a hotspot or metered network).
+Shown in the popover (an inline settings panel, as in flatline), stored in `UserDefaults`. Since M9 the panel has everything below; automatic updates also have a "check now" button. Changes apply at once: target changes re-plan and warm up like a network change, and a typed host applies on Return or when its field loses focus, so targets aren't re-resolved on every keystroke. A secondary host the same as the primary is left out. When the battery interval is in use, the panel says why (on battery, Low Power Mode, Low Data Mode, or a hotspot or metered network).
 
 | Setting | Options | Default |
 |---|---|---|
@@ -406,6 +406,8 @@ Probes now reach the main thread once per round with the snapshot, rather than o
 Not yet checked: real notifications (they need the permission prompt answered), a real screen lock and display sleep, Low Power Mode, a Low Data or hotspot path, the App Nap recheck and energy on battery (this Mac has none), and the threshold tuning, which waits for a week of history.
 
 **M8 results (2026-10-28).** `scripts/release.sh` is adapted from flatline's, without the Sparkle steps (M9): it checks for the Developer ID certificate and the CHANGELOG.md section, runs the StraylightKit tests, archives and exports for Developer ID, verifies the signature (Developer ID, team F87BNUZAVJ, hardened runtime, secure timestamp, arm64 only, an icon present), then notarizes and staples the app, builds an APFS DMG with an Applications link, signs, notarizes and staples it, checks both with `spctl`, and keeps a copy with its notes in `releases/`. `scripts/bump-version.sh` sets the version and raises the build number. The app icon is an Icon Composer file in flatline's style: a phosphor dot with three arcs, the outer one fading, over a faint grid. The dry run (`--skip-notarize`) produced a signed DMG that mounts with the app and the Applications link. The full run, with flatline's notary profile (same team), had both submissions accepted; `spctl` accepts the app and the DMG as "Notarized Developer ID", and `stapler validate` passes for both. `straylight-0.1.0.dmg` is 2.7 MB, sha256 `fb37bdfe…0a4be8`. Stapling the DMG failed the first time because Apple's ticket wasn't available yet right after acceptance; the script now retries stapling for up to 90 s.
+
+**M9 results (2026-10-28).** Sparkle 2.10.0, as in flatline. The EdDSA key is new, in the login keychain under account "straylight"; its public half is `SUPublicEDKey` in project.yml. `release.sh` now signs each release into `site/appcast.xml`, and `scripts/deploy-site.sh` assembles `dist/site` (the page, the appcast and every release) and deploys it as a Cloudflare static-assets Worker on straylight.banast.as (`wrangler.jsonc`), the same setup as flatline. The page follows flatline's, with a section on the network traffic straylight sends (§6.12). For testing updates without publishing, `STRAYLIGHT_FEED_URL=http://localhost:…/appcast.xml` points the app at a local feed and checks it at launch; only localhost feeds are accepted. End to end, locally: a Developer ID build of 0.1.0 (1) against a signed local feed offering 0.1.1 (2) downloaded the DMG at launch and, with automatic downloads on, installed it on quit; the app on disk was then 0.1.1 (2), validly signed for team F87BNUZAVJ, and launched.
 
 ## 10. Accessibility and localization
 

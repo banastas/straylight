@@ -28,5 +28,13 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Bill Anastas</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://straylight.banast.as/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>sWaDm5zWOzYHu/tyhMKenacCr46WFyyfzooV69HFLoE=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>

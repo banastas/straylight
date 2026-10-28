@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Builds, signs, notarizes and packages straylight as a DMG in dist/, and keeps
-# a copy with its release notes in releases/ (local, not in git). The Sparkle
-# update feed and the site arrive in M9.
+# Builds, signs, notarizes and packages straylight as a DMG in dist/, then adds
+# it to the Sparkle update feed: the DMG and its release notes go to releases/
+# (kept locally, not in git) and site/appcast.xml is regenerated. Publish with
+# scripts/deploy-site.sh.
 #
 #   scripts/release.sh                  full release
 #   scripts/release.sh --skip-notarize  signed but not notarized (dry run)
 #
-# Release notes come from the "## <version>" section of CHANGELOG.md.
+# Release notes come from the "## <version>" section of CHANGELOG.md. Updates
+# are signed with the EdDSA key in the keychain under account "straylight".
 # Notarization reads credentials from a keychain profile (default "straylight",
 # override with NOTARY_PROFILE; flatline's profile works too, since it's the
 # same team). Create it once with:
@@ -27,6 +29,8 @@ EXPORT=$DIST/export
 APP=$EXPORT/straylight.app
 DMG=$DIST/straylight-$VERSION.dmg
 RELEASES=releases
+SITE_URL=https://straylight.banast.as
+SPARKLE_BIN=build/SourcePackages/artifacts/sparkle/Sparkle/bin
 
 step() { printf '\n==> %s\n' "$*"; }
 html_escape() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
@@ -138,16 +142,25 @@ if (( NOTARIZE )); then
     spctl --assess --type open --context context:primary-signature "$DMG"
     echo "    app and DMG accepted (notarized, stapled)"
 
-    step "Keeping $VERSION in $RELEASES/"
-    mkdir -p "$RELEASES"
+    step "Adding $VERSION to the update feed"
+    "$SPARKLE_BIN/generate_keys" --account straylight -p >/dev/null \
+        || fail "no Sparkle signing key in the keychain (account straylight)"
+    mkdir -p "$RELEASES" site
     cp "$DMG" "$RELEASES/"
     printf '%s\n' "$NOTES" > "$RELEASES/straylight-$VERSION.html"
-    echo "    $RELEASES/straylight-$VERSION.dmg"
+    "$SPARKLE_BIN/generate_appcast" --account straylight \
+        --download-url-prefix "$SITE_URL/releases/" --link "$SITE_URL" \
+        -o site/appcast.xml "$RELEASES"
+    grep -q "<sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>" site/appcast.xml \
+        || fail "site/appcast.xml has no entry for $VERSION"
+    echo "    $RELEASES/straylight-$VERSION.dmg, site/appcast.xml"
 fi
 
 step "Done"
 echo "    $DMG"
 echo "    $(du -h "$DMG" | cut -f1)  sha256 $(shasum -a 256 "$DMG" | cut -d' ' -f1)"
-if (( ! NOTARIZE )); then
+if (( NOTARIZE )); then
+    echo "    publish with: scripts/deploy-site.sh"
+else
     echo "    not notarized: run without --skip-notarize for a shippable build"
 fi

@@ -11,6 +11,7 @@ import SwiftUI
 final class StatusItemController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     private let model: AppModel
     private let preferences: Preferences
+    private let updater: Updater
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     /// Created per opening and released on close: a kept NSPopover holds on to
     /// its window and backing surfaces long after it's hidden (as in flatline).
@@ -36,9 +37,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     private let contentLayer = CALayer()
     private static let horizontalPadding: CGFloat = 4
 
-    init(model: AppModel, preferences: Preferences) {
+    init(model: AppModel, preferences: Preferences, updater: Updater) {
         self.model = model
         self.preferences = preferences
+        self.updater = updater
         super.init()
 
         statusItem.autosaveName = "straylight"
@@ -147,7 +149,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate, NSMenuDelegate {
             copyDiagnostics: { [model, preferences] in await Diagnostics.copy(model: model, preferences: preferences) },
             dismissFirstRun: { [weak self] in self?.dismissFirstRun() }
         )
-        let controller = NSHostingController(rootView: PopoverView(model: model, preferences: preferences, state: popoverState, actions: actions))
+        let controller = NSHostingController(rootView: PopoverView(model: model, preferences: preferences, updater: updater, state: popoverState, actions: actions))
         controller.sizingOptions = .preferredContentSize
 
         let popover = NSPopover()
@@ -199,6 +201,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate, NSMenuDelegate {
             menu.addItem(withTitle: String(localized: "Pause for 1 Hour"), action: #selector(pause), keyEquivalent: "").target = self
         }
         menu.addItem(withTitle: String(localized: "Settings…"), action: #selector(openSettings), keyEquivalent: ",").target = self
+        menu.addItem(withTitle: String(localized: "Check for Updates…"), action: #selector(checkForUpdates), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: String(localized: "Quit straylight"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
@@ -213,6 +216,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate, NSMenuDelegate {
 
     @objc private func openPopover() { togglePopover(settings: false) }
     @objc private func openSettings() { togglePopover(settings: true) }
+    @objc private func checkForUpdates() { updater.checkForUpdates() }
     @objc private func pause() { model.pause() }
     @objc private func resume() { model.resume() }
 
@@ -249,7 +253,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate, NSMenuDelegate {
             state.showingFirstRun = environment["STRAYLIGHT_POPOVER_PAGE"] == "first-run"
             if let range = environment["STRAYLIGHT_POPOVER_RANGE"].flatMap(ChartRange.init) { state.chartRange = range }
             let actions = PopoverActions(export: { _, _ in }, copyDiagnostics: {}, dismissFirstRun: {})
-            let view = NSHostingView(rootView: PopoverView(model: model, preferences: preferences, state: state, actions: actions))
+            let view = NSHostingView(rootView: PopoverView(model: model, preferences: preferences, updater: updater, state: state, actions: actions))
             let window = NSWindow(contentRect: CGRect(x: -10_000, y: -10_000, width: 340, height: 400), styleMask: .borderless, backing: .buffered, defer: false)
             window.contentView = view
             window.orderFrontRegardless()

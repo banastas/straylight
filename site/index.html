@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>straylight · network quality in the menu bar</title>
+<meta name="description" content="Latency, jitter and packet loss to your router and to the internet, side by side, in the menu bar of an Apple Silicon Mac.">
+<meta property="og:title" content="straylight">
+<meta property="og:description" content="Is it the Wi‑Fi, or the internet? Latency, jitter and loss to your router and the internet, side by side.">
+<meta property="og:image" content="https://straylight.banast.as/icon.png">
+<meta name="twitter:card" content="summary">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/icon.png">
+<link rel="alternate" type="application/rss+xml" title="straylight updates" href="/appcast.xml">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #07090a;
+    --panel: #0d1211;
+    --line: #1b2523;
+    --text: #d9e4de;
+    --dim: #82948d;
+    --faint: #56665f;
+    --phosphor: #33f273;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1100px 600px at 75% -10%, rgb(51 242 115 / 0.07), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font: 15px/1.6 var(--mono);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--phosphor); text-decoration: none; }
+  a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--phosphor); outline-offset: 3px; border-radius: 6px; }
+
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+  /* Header */
+  .top { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+  .brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 600; font-size: 17px; }
+  .brand img { width: 30px; height: 30px; }
+  .brand:hover { text-decoration: none; }
+  .top nav { display: flex; align-items: center; gap: 18px; font-size: 13px; }
+  .pill { padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--dim); }
+
+  /* Hero */
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    gap: 56px;
+    align-items: center;
+    padding: 56px 0 24px;
+  }
+  .eyebrow { margin: 0 0 18px; font-size: 12px; letter-spacing: 0.18em; color: var(--phosphor); }
+  h1 {
+    margin: 0;
+    font-size: clamp(30px, 3.6vw, 42px);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    color: #fff;
+  }
+  .lede { margin: 22px 0 28px; color: var(--dim); font-size: 16px; max-width: 34em; }
+
+  .menubar-strip {
+    display: flex; justify-content: flex-end; align-items: center;
+    height: 40px; padding: 0 14px; margin-bottom: 30px;
+    border: 1px solid var(--line); border-radius: 10px;
+    background: #000;
+    max-width: 440px;
+  }
+  .menubar-strip img { height: 22px; width: auto; display: block; }
+
+  .cta { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 20px; }
+  .button {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 13px 22px; border-radius: 12px;
+    background: var(--phosphor); color: #03140a; font-weight: 700;
+    box-shadow: 0 0 0 1px rgb(51 242 115 / 0.5), 0 8px 30px rgb(51 242 115 / 0.25);
+  }
+  .button:hover { text-decoration: none; filter: brightness(1.07); }
+  .button svg { width: 16px; height: 16px; }
+  .meta { color: var(--faint); font-size: 12.5px; line-height: 1.5; }
+
+
+  .shot { margin: 0; display: flex; justify-content: center; position: relative; }
+  .shot::before {
+    content: ""; position: absolute; inset: 12% 8%;
+    background: radial-gradient(closest-side, rgb(51 242 115 / 0.18), transparent);
+    filter: blur(30px); z-index: 0;
+  }
+  .shot img { position: relative; z-index: 1; width: 340px; max-width: 100%; height: auto; display: block; }
+
+  /* Trace divider: an RTT trace with one lost probe dropping it to the baseline */
+  .trace { display: block; width: 100%; height: 96px; margin: 8px 0 56px; overflow: visible; }
+  .trace path {
+    fill: none; stroke: var(--phosphor); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+    filter: drop-shadow(0 0 5px rgb(51 242 115 / 0.6));
+    stroke-dasharray: 1; stroke-dashoffset: 1;
+    animation: draw 2.6s cubic-bezier(.4, 0, .2, 1) .2s forwards;
+  }
+  .trace circle { fill: var(--phosphor); opacity: 0; animation: appear .4s ease-out 2.7s forwards; filter: drop-shadow(0 0 6px rgb(51 242 115 / 0.7)); }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes appear { to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .trace path { animation: none; stroke-dashoffset: 0; }
+    .trace circle { animation: none; opacity: 1; }
+  }
+
+  /* Sections */
+  h2 { margin: 0 0 18px; font-size: 12px; letter-spacing: 0.18em; color: var(--phosphor); font-weight: 600; }
+  section { margin-bottom: 64px; }
+
+  .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
+  .card h3 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.15em; color: #fff; display: flex; align-items: center; gap: 10px; }
+  .card h3::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--phosphor); box-shadow: 0 0 8px var(--phosphor); }
+  .card p { margin: 0; color: var(--dim); font-size: 14px; }
+
+  .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .stat { border-top: 1px solid var(--line); padding-top: 16px; }
+  .stat b { display: block; font-size: clamp(24px, 3vw, 32px); color: #fff; font-weight: 600; letter-spacing: -0.01em; }
+  .stat span { color: var(--dim); font-size: 13.5px; }
+
+  .split { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 24px; }
+  .notes { font-size: 14px; }
+  .notes > :first-child { margin-top: 0; }
+  .notes > :last-child { margin-bottom: 0; }
+  .notes ul { padding-left: 18px; }
+  .notes li { margin: 6px 0; }
+  .notes li::marker { color: var(--phosphor); }
+  .reqs { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+  .reqs li { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px dashed var(--line); color: var(--dim); }
+  .reqs li:last-child { border-bottom: 0; }
+  .reqs li::before { content: ">"; color: var(--phosphor); }
+
+  footer {
+    border-top: 1px solid var(--line); padding: 22px 0 40px;
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px;
+    color: var(--faint); font-size: 12.5px;
+  }
+  footer .links { display: flex; gap: 18px; }
+
+  /* Phones and narrow windows */
+  @media (max-width: 860px) {
+    .hero { grid-template-columns: minmax(0, 1fr); gap: 40px; padding-top: 28px; }
+    .cards, .stats, .split { grid-template-columns: minmax(0, 1fr); }
+    .trace { height: 64px; margin-bottom: 40px; }
+    .top nav .pill { display: none; }
+    .wrap { padding: 0 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="/"><img src="/icon.png" width="30" height="30" alt=""> straylight</a>
+    <nav>
+      <span class="pill">v{{VERSION}}</span>
+      <a href="https://flatline.banast.as">flatline</a>
+      <a href="/download">Download</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="hero">
+      <div>
+        <p class="eyebrow">NETWORK QUALITY · APPLE SILICON</p>
+        <h1>Is it the Wi‑Fi,<br>or the internet?</h1>
+        <p class="lede">straylight measures latency, jitter and packet loss to your router and to the internet side by side, so the menu bar answers the question before a call starts stuttering. It keeps a week of per-minute history, with outages logged and exportable for your ISP.</p>
+
+        <div class="menubar-strip">
+          <img src="/screenshots/menubar-dark.png" width="76" height="22" alt="straylight in the menu bar: a latency trace and RTT 5.9 ms">
+        </div>
+
+        <div class="cta">
+          <a class="button" href="/download">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0L4.5 6.5M8 10l3.5-3.5M3 13h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Download straylight {{VERSION}}
+          </a>
+          <span class="meta">{{SIZE}} · macOS 27+ · Apple Silicon<br>Signed, notarized, updates itself</span>
+        </div>
+      </div>
+
+      <figure class="shot">
+        <img src="/screenshots/popover.png" width="340" height="718" alt="straylight's popover: Good; router 0.4 ms and internet 5.1 ms cards with 60-second traces, median, p95, jitter and loss, and an hour of history">
+      </figure>
+    </div>
+
+    <svg class="trace" viewBox="0 0 1100 96" preserveAspectRatio="none" aria-hidden="true">
+      <path pathLength="1" d="M0 52 L60 48 L120 54 L180 46 L240 50 L300 44 L340 56 L380 48 L420 52 L460 46 L500 50 L520 88 L540 88 L560 48 L620 52 L680 42 L740 50 L800 46 L860 54 L920 48 L980 50 L1040 47"/>
+      <circle cx="1062" cy="47" r="7"/>
+    </svg>
+
+    <section aria-labelledby="shows">
+      <h2 id="shows">WHAT IT SHOWS</h2>
+      <div class="cards">
+        <div class="card">
+          <h3>ROUTER AND INTERNET</h3>
+          <p>Your router and two internet hosts from different providers, measured together, with a plain verdict: Good, Internet problem, Internet down, Local network problem or Offline.</p>
+        </div>
+        <div class="card">
+          <h3>LATENCY, JITTER, LOSS</h3>
+          <p>The latest reply, median and p95, jitter and loss for each target, with a 60-second trace where a lost ping drops the line flat. Wi‑Fi signal and noise alongside.</p>
+        </div>
+        <div class="card">
+          <h3>HISTORY</h3>
+          <p>Per-minute stats for 7 days and hourly for up to 90, outages and spikes logged, sleep and pauses marked as gaps. Export it as CSV to show your ISP.</p>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="traffic">
+      <h2 id="traffic">NETWORK TRAFFIC</h2>
+      <div class="panel notes">
+        <p>straylight sends small ping packets (56 bytes) to the targets you choose: your router, 1.1.1.1 and 8.8.8.8 by default, plus 1.1.1.1 over IPv6 on networks that have it. That's one per target per second on power and one every 5 seconds on battery. It stops while the screen is locked unless you turn on overnight monitoring. If a network blocks ping, it times a normal HTTPS connection instead.</p>
+        <p>The only other request is a daily update check to this site. There's no telemetry, and history stays on your Mac unless you export it.</p>
+      </div>
+    </section>
+
+    <section aria-labelledby="footprint">
+      <h2 id="footprint">RESOURCE USE</h2>
+      <div class="stats">
+        <div class="stat"><b>~0.15%</b><span>CPU at idle, probing every second</span></div>
+        <div class="stat"><b>13 MB</b><span>of memory with the popover closed</span></div>
+        <div class="stat"><b>&lt; 1 kbit/s</b><span>of pings per target, each way</span></div>
+      </div>
+    </section>
+
+    <section class="split" aria-label="Release notes and requirements">
+      <div class="panel">
+        <h2>WHAT'S NEW IN {{VERSION}}</h2>
+        <div class="notes">{{NOTES}}</div>
+      </div>
+      <div class="panel">
+        <h2>REQUIREMENTS</h2>
+        <ul class="reqs">
+          <li>macOS 27 or later</li>
+          <li>Apple Silicon (M1 or newer)</li>
+          <li>Signed and notarized by Apple</li>
+          <li>Updates itself in the background</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>© 2026 Bill Anastas · MIT license · a sibling of <a href="https://flatline.banast.as">flatline</a></span>
+    <span class="links"><a href="/download">Download</a><a href="/appcast.xml">Appcast</a></span>
+  </footer>
+</div>
+</body>
+</html>

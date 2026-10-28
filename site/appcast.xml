@@ -1,0 +1,28 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>straylight</title>
+        <item>
+            <title>0.1.0</title>
+            <pubDate>Wed, 28 Oct 2026 15:53:12 -0700</pubDate>
+            <link>https://straylight.banast.as</link>
+            <sparkle:version>1</sparkle:version>
+            <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>27.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<p>The first release.</p>
+<ul>
+  <li>Router and internet measured side by side, with a plain verdict: Good, Internet problem, Internet down, Local network problem or Offline</li>
+  <li>Two internet hosts from different providers, plus IPv6 on dual-stack networks, with a TCP fallback for hosts that block ping</li>
+  <li>Latency now, median and p95, jitter and loss per target, with a 60-second trace</li>
+  <li>History: per-minute stats for 7 days, hourly for up to 90, minute states for sleep, lock and pauses, and CSV export of measurements and outages</li>
+  <li>Wi‑Fi signal, noise and transmit rate next to the measurements</li>
+  <li>Fixed-width menu bar with text, a trace or both; pause for an hour from the right-click menu</li>
+  <li>Probes every 5 seconds on battery, in Low Power Mode and on Low Data or hotspot networks; stops while the screen is locked</li>
+  <li>Optional notifications for outages and verdict changes</li>
+  <li>Copy diagnostics for bug reports; no telemetry</li>
+</ul>
+]]></description>
+            <enclosure url="https://straylight.banast.as/releases/straylight-0.1.0.dmg" length="3750398" type="application/octet-stream" sparkle:edSignature="YgM0i1Pb2Q3GkXFNZF8fXbOj6w4xtitwReLY3NYAnjmR8uB49pIB9Y4UMd7Kw166bdG9941PV1cQM7pfMsNPCg=="/>
+        </item>
+    </channel>
+</rss>

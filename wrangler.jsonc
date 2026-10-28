@@ -1,0 +1,11 @@
+// straylight.banast.as: a static-assets Worker (Cloudflare Pages' current form).
+// scripts/deploy-site.sh assembles dist/site and deploys it with `wrangler deploy`.
+{
+  "name": "straylight-banast-as",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist/site"
+  },
+  // Attaches the domain and creates its DNS record on deploy.
+  "routes": [{ "pattern": "straylight.banast.as", "custom_domain": true }]
+}

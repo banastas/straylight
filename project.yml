@@ -34,6 +34,9 @@ settings:
 packages:
   StraylightKit:
     path: Packages/StraylightKit
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.0
 
 targets:
   Straylight:
@@ -43,6 +46,7 @@ targets:
       - path: App
     dependencies:
       - package: StraylightKit
+      - package: Sparkle
       - sdk: CoreWLAN.framework
     info:
       path: App/Support/Info.plist
@@ -55,6 +59,12 @@ targets:
         LSApplicationCategoryType: public.app-category.utilities
         LSUIElement: true
         NSHumanReadableCopyright: © 2026 Bill Anastas
+        # Sparkle. Checks daily without asking first; the private half of
+        # SUPublicEDKey lives in the release machine's keychain (account "straylight").
+        SUFeedURL: https://straylight.banast.as/appcast.xml
+        SUPublicEDKey: sWaDm5zWOzYHu/tyhMKenacCr46WFyyfzooV69HFLoE=
+        SUEnableAutomaticChecks: true
+        SUScheduledCheckInterval: 86400
     settings:
       base:
         PRODUCT_NAME: straylight

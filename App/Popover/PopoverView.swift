@@ -34,6 +34,7 @@ extension EnvironmentValues {
 struct PopoverView: View {
     let model: AppModel
     @Bindable var preferences: Preferences
+    let updater: Updater
     @Bindable var state: PopoverState
     let actions: PopoverActions
     @State private var contentHeight: CGFloat = 0
@@ -49,7 +50,7 @@ struct PopoverView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     if state.showingSettings {
-                        SettingsView(preferences: preferences, model: model)
+                        SettingsView(preferences: preferences, model: model, updater: updater)
                     } else {
                         if state.showingFirstRun {
                             FirstRunCard(dismiss: actions.dismissFirstRun)
@@ -61,7 +62,7 @@ struct PopoverView: View {
             }
             .scrollIndicators(.automatic)
             .frame(height: min(contentHeight, maxScrollHeight))
-            FooterView(state: state, actions: actions)
+            FooterView(state: state, updater: updater, actions: actions)
         }
         .padding(14)
         .frame(width: 340)
@@ -197,7 +198,9 @@ private struct HeaderView: View {
 
 private struct FooterView: View {
     @Bindable var state: PopoverState
+    let updater: Updater
     let actions: PopoverActions
+    @Environment(\.accent) private var accent
     @State private var copy = CopyState.idle
 
     private enum CopyState {
@@ -236,8 +239,15 @@ private struct FooterView: View {
             .disabled(copy == .copying)
             .help(String(localized: "Copy diagnostics to the clipboard"))
             .accessibilityLabel(copy == .copied ? String(localized: "Diagnostics copied") : String(localized: "Copy diagnostics"))
-            Text("v\(version)")
-                .foregroundStyle(.tertiary)
+            // The update indicator (PRD §6.7): a scheduled check found a new version.
+            if let available = updater.availableVersion {
+                Button(String(localized: "update \(available)")) { updater.checkForUpdates() }
+                    .foregroundStyle(accent)
+                    .help(String(localized: "Install straylight \(available)"))
+            } else {
+                Text("v\(version)")
+                    .foregroundStyle(.tertiary)
+            }
             Spacer()
             Button(String(localized: "quit")) { NSApp.terminate(nil) }
                 .keyboardShortcut("q")

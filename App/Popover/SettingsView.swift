@@ -6,6 +6,9 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var preferences: Preferences
     let model: AppModel
+    let updater: Updater
+    @State private var autoCheck = true
+    @State private var autoDownload = false
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
 
@@ -95,6 +98,19 @@ struct SettingsView: View {
                 }
                 LaunchAtLoginToggle(isOn: $launchAtLogin, error: $loginError)
             }
+            SettingsSection(title: String(localized: "UPDATES")) {
+                Toggle(String(localized: "check automatically"), isOn: $autoCheck)
+                    .onChange(of: autoCheck) { _, on in updater.automaticallyChecks = on }
+                Toggle(String(localized: "download automatically"), isOn: $autoDownload)
+                    .onChange(of: autoDownload) { _, on in updater.automaticallyDownloads = on }
+                    .disabled(!autoCheck)
+                Button(String(localized: "check now")) { updater.checkForUpdates() }
+                    .buttonStyle(.borderless)
+            }
+        }
+        .onAppear {
+            autoCheck = updater.automaticallyChecks
+            autoDownload = updater.automaticallyDownloads
         }
         .font(.caption)
         .pickerStyle(.segmented)
