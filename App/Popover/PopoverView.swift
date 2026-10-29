@@ -11,6 +11,10 @@ final class PopoverState {
     var chartTarget = ChartTarget.internet
     /// The first-run note (PRD §6.8), until it's dismissed.
     var showingFirstRun = false
+    /// The scrolling content's last measured height. Starting from it lets
+    /// the first layout pass size the popover, instead of a second pass and a
+    /// resize once it's measured (PRD §8, first frame).
+    var contentHeight: CGFloat = 0
 }
 
 enum ChartTarget: String, CaseIterable, Identifiable {
@@ -37,8 +41,6 @@ struct PopoverView: View {
     let updater: Updater
     @Bindable var state: PopoverState
     let actions: PopoverActions
-    @State private var contentHeight: CGFloat = 0
-
     /// Taller content scrolls instead of running off the screen.
     private var maxScrollHeight: CGFloat {
         max(200, (NSScreen.main?.visibleFrame.height ?? 800) - 180)
@@ -58,10 +60,10 @@ struct PopoverView: View {
                         cards
                     }
                 }
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { state.contentHeight = $0 }
             }
             .scrollIndicators(.automatic)
-            .frame(height: min(contentHeight, maxScrollHeight))
+            .frame(height: min(state.contentHeight, maxScrollHeight))
             FooterView(state: state, updater: updater, actions: actions)
         }
         .padding(14)

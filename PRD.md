@@ -409,6 +409,21 @@ Not yet checked: real notifications (they need the permission prompt answered), 
 
 **M9 results (2026-10-28).** Sparkle 2.10.0, as in flatline. The EdDSA key is new, in the login keychain under account "straylight"; its public half is `SUPublicEDKey` in project.yml. `release.sh` now signs each release into `site/appcast.xml`, and `scripts/deploy-site.sh` assembles `dist/site` (the page, the appcast and every release) and deploys it as a Cloudflare static-assets Worker on straylight.banast.as (`wrangler.jsonc`), the same setup as flatline. The page follows flatline's, with a section on the network traffic straylight sends (§6.12). For testing updates without publishing, `STRAYLIGHT_FEED_URL=http://localhost:…/appcast.xml` points the app at a local feed and checks it at launch; only localhost feeds are accepted. End to end, locally: a Developer ID build of 0.1.0 (1) against a signed local feed offering 0.1.1 (2) downloaded the DMG at launch and, with automatic downloads on, installed it on quit; the app on disk was then 0.1.1 (2), validly signed for team F87BNUZAVJ, and launched. Deployed 2026-10-28: straylight.banast.as serves the page, `appcast.xml` (XML, `no-cache`) listing 0.1.0 with its EdDSA signature, `/download` redirecting to the DMG, and a DMG identical to `releases/straylight-0.1.0.dmg` (sha256 `6f1ec86c…`), which Gatekeeper accepts as notarized with the quarantine flag set. An update through the live feed waits for the next release.
 
+**M10 checks so far (2026-10-28, same Mac on Ethernet).**
+
+| Item | Result |
+|---|---|
+| CPU | 1.25 × flatline (0.157 % against 0.127 %), within budget |
+| Memory | 13 MB before the popover is first opened. After use it stays around 31–35 MB (malloc memory SwiftUI keeps after the popover is released, mostly `Malloc Small`), about the same as flatline's 34 MB measured the same way. Over the 30 MB budget once the popover has been used. |
+| Network | 84-byte IP packets once a second per target, about 0.7 kbit/s each way, within budget |
+| History on disk | 9.4 MB for a database filled to 90 days with six targets (router, two hosts, IPv6, two custom) and 2,000 events; about 6 MB with the default four. Within budget. |
+| Popover first frame | Timed from the click to the next main-queue turn, after the first Core Animation commit (logged as "popover opened in … ms"). The popover is now kept for a minute after it closes: reopening within the minute takes 23–27 ms. Building it fresh takes about 75 ms, and the first opening after launch about 140 ms (SwiftUI and fonts loading). Over the 50 ms budget unless reopened within the minute. Most of a fresh opening is AppKit building the popover window (about 25 ms) and SwiftUI laying out the cards. Starting from the last measured scroll height means the first frame is the full popover, not an empty one that grows a frame later. |
+| Median RTT vs `ping -c 60` | Router 0.51 / 0.38 ms, 1.1.1.1 6.29 / 6.72 ms, 8.8.8.8 5.44 / 5.35 ms: all within tolerance. 1.1.1.1 still reads lower than `ping`, as in M1, but now by 0.43 ms. |
+| Jitter vs `ping` | Router 0.11 / 0.13 ms, 1.1.1.1 1.45 / 1.81 ms, 8.8.8.8 1.57 / 1.40 ms: within ± 1 ms |
+| Router | Matched `route -n get default` (M2) |
+
+Still to check by hand: the median after a sleep, loss under Network Link Conditioner, Wi‑Fi ↔ Ethernet and VPN switching, an outage on battery (needs a laptop), and the ICMP block with `pf` (needs `sudo`).
+
 ## 10. Accessibility and localization
 
 - VoiceOver labels on the status item and on every popover value; lost probes in traces are described in text ("3 lost in the last minute")

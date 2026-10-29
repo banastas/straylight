@@ -1,6 +1,7 @@
 import AppKit
 import CoreWLAN
 import ImageIO
+import os
 import Observation
 import StraylightKit
 import SwiftUI
@@ -13,9 +14,13 @@ final class StatusItemController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     private let preferences: Preferences
     private let updater: Updater
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    /// Created per opening and released on close: a kept NSPopover holds on to
-    /// its window and backing surfaces long after it's hidden (as in flatline).
+    /// Kept for a minute after it closes, so reopening skips building the
+    /// window and the SwiftUI tree (about 20 ms instead of 75). Then released:
+    /// a kept NSPopover holds on to its window and backing surfaces long after
+    /// it's hidden (as in flatline).
     private var popover: NSPopover?
+    private var popoverRelease: DispatchWorkItem?
+    private static let keepPopoverFor: TimeInterval = 60
     private var popoverOpened: Date?
     private let popoverState = PopoverState()
     /// The first-run note counts as seen once it has been open this long, so
@@ -61,6 +66,14 @@ final class StatusItemController: NSObject, NSPopoverDelegate, NSMenuDelegate {
         observePreferences()
         redraw()
         if let path = Self.popoverSnapshotPath { schedulePopoverSnapshot(to: path) }
+        // `STRAYLIGHT_POPOVER_TIMING=5` opens and closes the popover five times
+        // from 15 s after launch, for timing its first frame without clicking.
+        if let count = ProcessInfo.processInfo.environment["STRAYLIGHT_POPOVER_TIMING"].flatMap(Int.init) {
+            for index in 0..<count {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 15 + Double(index) * 3) { [weak self] in self?.togglePopover(settings: false) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 16.5 + Double(index) * 3) { [weak self] in self?.popover?.performClose(nil) }
+            }
+        }
     }
 
     /// The first-run note (PRD §6.8), once the status item is on screen.
@@ -138,8 +151,15 @@ final class StatusItemController: NSObject, NSPopoverDelegate, NSMenuDelegate {
             return
         }
         guard let button = statusItem.button else { return }
+        let started = MachClock.now()
+        popoverRelease?.cancel()
+        popoverRelease = nil
 
         if settings { popoverState.showingSettings = true }
+        if let popover {
+            show(popover, from: button, started: started)
+            return
+        }
         let actions = PopoverActions(
             export: { [weak self] kind, range in
                 guard let self else { return }
@@ -158,14 +178,25 @@ final class StatusItemController: NSObject, NSPopoverDelegate, NSMenuDelegate {
         popover.delegate = self
         popover.contentViewController = controller
         self.popover = popover
+        show(popover, from: button, started: started)
+    }
 
+    private func show(_ popover: NSPopover, from button: NSStatusBarButton, started: UInt64) {
+        let reused = popover.contentViewController?.view.window != nil
         model.detailsVisible = true
         popoverOpened = Date()
         NSApp.activate()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         // Without key status the popover draws its controls inactive.
-        controller.view.window?.makeKey()
+        popover.contentViewController?.view.window?.makeKey()
+        // The next main-queue turn comes after this run loop pass's Core
+        // Animation commit, which puts the first frame on screen (PRD §8).
+        DispatchQueue.main.async {
+            Self.log.notice("popover opened in \(MachClock.milliseconds(from: started, to: MachClock.now()), format: .fixed(precision: 1), privacy: .public) ms\(reused ? " (kept)" : "", privacy: .public)")
+        }
     }
+
+    private static let log = Logger(subsystem: "as.banast.straylight", category: "app")
 
     private func dismissFirstRun() {
         popoverState.showingFirstRun = false
@@ -177,15 +208,18 @@ final class StatusItemController: NSObject, NSPopoverDelegate, NSMenuDelegate {
         if popoverState.showingFirstRun, let popoverOpened, Date().timeIntervalSince(popoverOpened) >= Self.firstRunSeenAfter {
             dismissFirstRun()
         }
-        // Release the popover, its window and the SwiftUI tree once AppKit has
-        // finished closing it, then hand the freed pages back to the system.
-        DispatchQueue.main.async { [weak self] in
+        // Release the popover, its window and the SwiftUI tree a minute after
+        // it closes unless it's opened again, then hand the freed pages back.
+        let release = DispatchWorkItem { [weak self] in
             guard let self, self.popover?.isShown != true else { return }
             self.popover = nil
+            self.popoverRelease = nil
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 malloc_zone_pressure_relief(nil, 0)
             }
         }
+        popoverRelease = release
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.keepPopoverFor, execute: release)
     }
 
     private func showMenu() {

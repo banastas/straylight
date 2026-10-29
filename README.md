@@ -4,11 +4,13 @@ A small menu bar app for Apple Silicon Macs that shows how good your connection 
 
 > Is it the Wi‑Fi, or the internet? straylight answers that at a glance.
 
+<p align="center"><img src="site/screenshots/popover.png" width="340" alt="straylight's popover: Good; router 0.4 ms and internet 5.1 ms with 60-second traces, median, p95, jitter and loss, and an hour of history"></p>
+
 straylight is a sibling to [flatline](https://github.com/banastas/flatline). flatline shows how much traffic is moving; straylight shows its quality. It follows the same rules: one narrow job, Apple Silicon and macOS 27 only, no root helper, and close to zero cost when idle.
 
-**Status:** in development. The measuring, history, menu bar, popover, settings, battery rates and notifications work; signed releases and updates come next. See the [PRD](PRD.md).
+**Status:** 0.1.0 is out; 1.0 follows once the remaining hands-on checks are done. See the [PRD](PRD.md).
 
-## Features (planned for 1.0)
+## Features
 
 - **Router and internet measured together**, with a plain verdict: Good, Internet problem, Internet down, Local network problem, or Offline
 - **Two internet hosts from different providers**, so one provider's bad day doesn't look like your ISP's
@@ -32,7 +34,7 @@ straylight sends small ping packets (56 bytes) to the targets you choose: your r
 
 ## Install
 
-Not released yet. When it is, downloads will be at **[straylight.banast.as](https://straylight.banast.as)**.
+Download the latest version from **[straylight.banast.as](https://straylight.banast.as)**, open the DMG and drag straylight to Applications. It's signed and notarized, and updates itself.
 
 ## Building from source
 
@@ -60,7 +62,7 @@ swift run --package-path Packages/StraylightKit -c release straylight-probe -c 6
 
 The app reads a few environment variables for checking its drawing without clicking: `STRAYLIGHT_SNAPSHOT=bar.png` writes each menu bar image, `STRAYLIGHT_POPOVER_SNAPSHOT=popover.png` writes the popover after 15 seconds (`STRAYLIGHT_POPOVER_PAGE=settings`, `first-run`, `paused` or `wifi` picks what it shows), `STRAYLIGHT_HISTORY=test.sqlite` uses another history database, `STRAYLIGHT_HOSTS=1.1.1.1,192.0.2.1` sets the internet hosts, `STRAYLIGHT_ON_BATTERY=1` acts as if on battery, and `STRAYLIGHT_LOCK_TEST=10,40` acts as if the screen locked at 10 s and unlocked at 40 s. The comments in `StatusItemController.swift`, `AppModel.swift` and `SystemState.swift` list the rest.
 
-Debug builds are ad-hoc signed and run on any Mac. Release builds are signed with the maintainer's Developer ID: `scripts/release.sh` tests, archives, signs, notarizes and staples the app and a DMG in `dist/` (`--skip-notarize` for a dry run), `scripts/bump-version.sh 0.2.0` sets the next version, and `scripts/deploy-site.sh` publishes the site, the update feed and the releases (`--no-deploy` to assemble `dist/site` for a local look). `STRAYLIGHT_FEED_URL=http://localhost:8000/appcast.xml` points the app at a local feed, for testing an update without publishing.
+Debug builds are ad-hoc signed and run on any Mac. Release builds are signed with the maintainer's Developer ID: `scripts/release.sh` tests, archives, signs, notarizes and staples the app and a DMG in `dist/` (`--skip-notarize` for a dry run), `scripts/bump-version.sh 0.2.0` sets the next version, and `scripts/deploy-site.sh` publishes the site, the update feed and the releases (`--no-deploy` to assemble `dist/site` for a local look). `STRAYLIGHT_FEED_URL=http://localhost:8000/appcast.xml` points the app at a local feed, for testing an update without publishing, and `STRAYLIGHT_POPOVER_TIMING=5` opens and closes the popover five times and logs how long each first frame took.
 
 ## License
 
