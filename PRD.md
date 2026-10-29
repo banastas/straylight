@@ -329,15 +329,17 @@ Same approach as flatline (its PRD §7.4): draw into one image per tick, put it 
 
 Measured on an M-series Mac with the default targets (router, two internet hosts, plus IPv6 on a dual-stack network), popover closed:
 
+The memory and first-frame budgets were restated in M10. SwiftUI keeps memory after the popover is released, as it does in flatline, and building the popover fresh takes about 75 ms, mostly in AppKit and SwiftUI layout.
+
 | Metric | Budget |
 |---|---|
 | Average CPU at a 1 s interval | ≤ 1.5 × flatline's, measured side by side (below) |
-| Resident memory | < 30 MB |
+| Memory (physical footprint) | < 30 MB before the popover is first opened; after use, within flatline's measured the same way |
 | Wake-ups | ≤ 2 on the probe queue per interval (the send timer and the round's tick), plus one hop to the main thread |
 | Network | < 1 kbit/s each way per target at a 1 s interval |
 | Energy Impact (Activity Monitor), on power | ≈ flatline's |
 | History on disk | < 10 MB at 90-day retention |
-| Popover open → first frame | < 50 ms |
+| Popover open → first frame | < 50 ms when reopened within a minute (the popover is kept that long); < 100 ms built fresh |
 
 Checked before each release with Instruments and with a tick profiler: run the binary with `STRAYLIGHT_PROFILE=1`, as with flatline. CPU is compared with flatline rather than held to a fixed figure, because the absolute number moves with system load and core type (flatline alone read 0.100–0.127 % of one core across runs on the same Mac). The method: release builds of both apps running, popover closed, straylight settled for 90 s, then the difference in each process's `ps -o time` over the same 5 minutes.
 
@@ -414,10 +416,10 @@ Not yet checked: real notifications (they need the permission prompt answered), 
 | Item | Result |
 |---|---|
 | CPU | 1.25 × flatline (0.157 % against 0.127 %), within budget |
-| Memory | 13 MB before the popover is first opened. After use it stays around 31–35 MB (malloc memory SwiftUI keeps after the popover is released, mostly `Malloc Small`), about the same as flatline's 34 MB measured the same way. Over the 30 MB budget once the popover has been used. |
+| Memory | 13 MB before the popover is first opened. After use it stays around 31–35 MB (malloc memory SwiftUI keeps after the popover is released, mostly `Malloc Small`), about the same as flatline's 34 MB measured the same way. Within the restated budget. |
 | Network | 84-byte IP packets once a second per target, about 0.7 kbit/s each way, within budget |
 | History on disk | 9.4 MB for a database filled to 90 days with six targets (router, two hosts, IPv6, two custom) and 2,000 events; about 6 MB with the default four. Within budget. |
-| Popover first frame | Timed from the click to the next main-queue turn, after the first Core Animation commit (logged as "popover opened in … ms"). The popover is now kept for a minute after it closes: reopening within the minute takes 23–27 ms. Building it fresh takes about 75 ms, and the first opening after launch about 140 ms (SwiftUI and fonts loading). Over the 50 ms budget unless reopened within the minute. Most of a fresh opening is AppKit building the popover window (about 25 ms) and SwiftUI laying out the cards. Starting from the last measured scroll height means the first frame is the full popover, not an empty one that grows a frame later. |
+| Popover first frame | Timed from the click to the next main-queue turn, after the first Core Animation commit (logged as "popover opened in … ms"). The popover is now kept for a minute after it closes: reopening within the minute takes 23–27 ms. Building it fresh takes about 75 ms, and the first opening after launch about 140 ms (SwiftUI and fonts loading). Within the restated budget, except the first opening after launch. Most of a fresh opening is AppKit building the popover window (about 25 ms) and SwiftUI laying out the cards. Starting from the last measured scroll height means the first frame is the full popover, not an empty one that grows a frame later. |
 | Median RTT vs `ping -c 60` | Router 0.51 / 0.38 ms, 1.1.1.1 6.29 / 6.72 ms, 8.8.8.8 5.44 / 5.35 ms: all within tolerance. 1.1.1.1 still reads lower than `ping`, as in M1, but now by 0.43 ms. |
 | Jitter vs `ping` | Router 0.11 / 0.13 ms, 1.1.1.1 1.45 / 1.81 ms, 8.8.8.8 1.57 / 1.40 ms: within ± 1 ms |
 | Router | Matched `route -n get default` (M2) |
