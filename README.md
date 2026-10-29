@@ -8,7 +8,7 @@ A small menu bar app for Apple Silicon Macs that shows how good your connection 
 
 straylight is a sibling to [flatline](https://github.com/banastas/flatline). flatline shows how much traffic is moving; straylight shows its quality. It follows the same rules: one narrow job, Apple Silicon and macOS 27 only, no root helper, and close to zero cost when idle.
 
-**Status:** 0.1.0 is out; 1.0 follows once the remaining hands-on checks are done. See the [PRD](PRD.md).
+**Status:** 0.1.1 is out; 1.0 follows once the remaining hands-on checks are done. See the [PRD](PRD.md).
 
 ## Features
 

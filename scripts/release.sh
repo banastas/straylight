@@ -9,15 +9,15 @@
 #
 # Release notes come from the "## <version>" section of CHANGELOG.md. Updates
 # are signed with the EdDSA key in the keychain under account "straylight".
-# Notarization reads credentials from a keychain profile (default "straylight",
-# override with NOTARY_PROFILE; flatline's profile works too, since it's the
-# same team). Create it once with:
-#   xcrun notarytool store-credentials straylight --team-id F87BNUZAVJ
+# Notarization reads credentials from a keychain profile: flatline's by default,
+# since both apps are the same team (override with NOTARY_PROFILE). Create one
+# with:
+#   xcrun notarytool store-credentials <name> --team-id F87BNUZAVJ
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 TEAM_ID=F87BNUZAVJ
-PROFILE=${NOTARY_PROFILE:-straylight}
+PROFILE=${NOTARY_PROFILE:-flatline}
 NOTARIZE=1
 [[ ${1:-} == --skip-notarize ]] && NOTARIZE=0
 

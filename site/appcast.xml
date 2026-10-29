@@ -3,6 +3,24 @@
     <channel>
         <title>straylight</title>
         <item>
+            <title>0.1.1</title>
+            <pubDate>Wed, 28 Oct 2026 19:10:49 -0700</pubDate>
+            <link>https://straylight.banast.as</link>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>0.1.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>27.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<ul>
+  <li>The menu bar item is 10 points narrower: with a trace, the verdict mark sits beside the latency instead of in its own column</li>
+  <li>The popover reopens in about 25 ms instead of 75: it's kept for a minute after closing</li>
+  <li>The popover opens at its full height instead of growing on its first frame</li>
+</ul>
+]]></description>
+            <enclosure url="https://straylight.banast.as/releases/straylight-0.1.1.dmg" length="3754970" type="application/octet-stream" sparkle:edSignature="4BsN9Rhj3oqke27uohCWdkOXyIE1s3pvcdWS8enzs5cDJMse3AB7zZ2bFH9hWrYRs3drXzpnp6FEwXQD5SXLCg=="/>
+            <sparkle:deltas>
+                <enclosure url="https://straylight.banast.as/releases/straylight2-1.delta" sparkle:deltaFrom="1" length="81486" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976464" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="3pqVb2nkd7R6Zpyky1olC2RMIsGLJlz28NeGnMEN9Kr+4ze5j0lgVcIdZRoY+lZD6uRm0oiD3fLV2AjEF8WCAQ=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>0.1.0</title>
             <pubDate>Wed, 28 Oct 2026 15:53:12 -0700</pubDate>
             <link>https://straylight.banast.as</link>

@@ -7,6 +7,12 @@
 /releases/*
   Cache-Control: public, max-age=31536000, immutable
 
+# The static-assets server doesn't know .delta and sends no Content-Type. Sparkle
+# then saves the download without its extension, can't unarchive it, and falls
+# back to the full DMG.
+/releases/*.delta
+  Content-Type: application/octet-stream
+
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

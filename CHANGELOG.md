@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1 (2026-10-28)
+
+- The menu bar item is 10 points narrower: with a trace, the verdict mark sits beside the latency instead of in its own column
+- The popover reopens in about 25 ms instead of 75: it's kept for a minute after closing
+- The popover opens at its full height instead of growing on its first frame
+
 ## 0.1.0 (2026-10-28)
 
 The first release.
