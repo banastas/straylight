@@ -2,15 +2,18 @@ import AppKit
 import StraylightKit
 
 /// Draws the status item as one image (PRD §6.6, §7.4): the RTT of the target
-/// shown, as text, a trace or both, then the verdict mark. Its width depends
-/// only on the style and target, never on the values, so it doesn't jump.
+/// shown, as text, a trace or both, and the verdict mark. With text, the mark
+/// sits at the end of the `RTT` row, which has room to spare; otherwise it has
+/// a column of its own. The width depends only on the style and target, never
+/// on the values, so it doesn't jump.
 ///
 /// The canvas and glyph-cell text drawing are flatline's (PRD §13).
 @MainActor
 enum MenuBarRenderer {
     enum Piece: Sendable, Equatable {
-        /// `RTT` over `23ms`; the caption is `TCP` in TCP mode.
-        case stacked(caption: String, value: String)
+        /// `RTT` over `23ms`; the caption is `TCP` in TCP mode. The mark goes
+        /// at the end of the caption row.
+        case stacked(caption: String, value: String, mark: Mark)
         /// Router over internet, for the both-targets view.
         case pair(top: String, bottom: String)
         /// Trace heights in 0...1, right-aligned: a new trace grows from the right.
@@ -64,20 +67,24 @@ enum MenuBarRenderer {
 
         var pieces: [Piece] = []
         let style = preferences.displayStyle
+        let mark = Mark(MenuBarText.mark(for: snapshot.verdict, paused: model.isPaused))
         switch preferences.menuBarTarget {
         case .internet, .router:
             let role: TargetRole = preferences.menuBarTarget == .router ? .router : .internet(0)
             if style != .text { pieces.append(.trace(trace(role))) }
             if style != .trace {
-                pieces.append(.stacked(caption: snapshot[role]?.status == .tcp ? "TCP" : "RTT", value: padded(value(role))))
+                pieces.append(.stacked(caption: snapshot[role]?.status == .tcp ? "TCP" : "RTT", value: padded(value(role)), mark: mark))
+            } else {
+                pieces.append(.mark(mark))
             }
         case .both:
             if style != .text { pieces.append(.traces(top: trace(.router), bottom: trace(.internet(0)))) }
             if style != .trace {
                 pieces.append(.pair(top: "R " + value(.router).leftPadded(to: widest), bottom: "I " + value(.internet(0)).leftPadded(to: widest)))
             }
+            // Both rows are full, so the mark keeps its own column.
+            pieces.append(.mark(mark))
         }
-        pieces.append(.mark(Mark(MenuBarText.mark(for: snapshot.verdict, paused: model.isPaused))))
         return Layout(pieces: pieces, dimmed: model.isPaused)
     }
 
@@ -278,9 +285,11 @@ enum MenuBarRenderer {
     private static func draw(_ piece: Piece, at x: CGFloat, height: CGFloat, ink: Ink, in context: CGContext) {
         let mid = height / 2
         switch piece {
-        case let .stacked(caption, value):
+        case let .stacked(caption, value, mark):
             drawText(caption, font: captionFont, color: ink.caption, centeredIn: stackedWidth, x: x, y: mid - 11, in: context)
             drawText(value, font: valueFont, color: ink.text, centeredIn: stackedWidth, x: x, y: mid - 2.5, in: context)
+            // Over the value's unit, level with the caption.
+            drawMark(mark, centerX: x + stackedWidth - 2.5, mid: mid - 6.5, scale: captionMarkScale, color: ink.mark, context: context)
 
         case let .pair(top, bottom):
             drawText(top, font: pairFont, color: ink.text, centeredIn: pairWidth, x: x, y: mid - 11, in: context)
@@ -294,7 +303,7 @@ enum MenuBarRenderer {
             drawTrace(bottom, in: CGRect(x: x, y: mid + 1, width: traceWidth, height: 7), ink: ink, context: context)
 
         case let .mark(mark):
-            drawMark(mark, centerX: x + markWidth / 2, mid: mid, color: ink.mark, context: context)
+            drawMark(mark, centerX: x + markWidth / 2, mid: mid, scale: 1, color: ink.mark, context: context)
         }
     }
 
@@ -316,11 +325,21 @@ enum MenuBarRenderer {
         context.strokePath()
     }
 
+    /// The mark's size in the caption row, which is 8 pt type.
+    private static let captionMarkScale: CGFloat = 0.75
+
     /// Drawn as shapes, not text, so they never depend on font fallback.
-    private static func drawMark(_ mark: Mark, centerX: CGFloat, mid: CGFloat, color: CGColor, context: CGContext) {
+    /// `scale` 1 is the full-height mark of its own column.
+    private static func drawMark(_ mark: Mark, centerX: CGFloat, mid: CGFloat, scale: CGFloat, color: CGColor, context: CGContext) {
+        context.saveGState()
+        defer { context.restoreGState() }
+        // Scaled about the mark's center; the stroke stays 1.5 pt for legibility.
+        context.translateBy(x: centerX, y: mid)
+        context.scaleBy(x: scale, y: scale)
+        context.translateBy(x: -centerX, y: -mid)
         context.setStrokeColor(color)
         context.setFillColor(color)
-        context.setLineWidth(1.5)
+        context.setLineWidth(1.5 / scale)
         context.setLineCap(.round)
         context.beginPath()
         switch mark {
