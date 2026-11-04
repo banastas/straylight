@@ -55,6 +55,12 @@ struct TargetStats {
         prune()
     }
 
+    /// Removes losses of probes sent before `time`.
+    mutating func dropLosses(sentBefore time: Double) {
+        samples.removeAll { $0.rtt == nil && $0.time < time }
+        lateTimes.removeAll { $0 < time }
+    }
+
     mutating func recordLate(at time: Double) {
         lateTimes.append(time)
         prune()

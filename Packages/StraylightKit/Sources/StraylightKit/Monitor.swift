@@ -48,7 +48,7 @@ struct MonitorCore {
         var outage = OutageDetector()
         var spike = SpikeDetector()
         /// Measurements during warm-up, held until it's clear the target stays on ICMP.
-        var warmUpProbes: [ProbeRecord] = []
+        var warmUpProbes: [(probe: ProbeRecord, time: Double)] = []
 
         var thresholds: Thresholds { target.role == .router ? .router : .internet }
     }
@@ -58,6 +58,9 @@ struct MonitorCore {
     private(set) var records: [Record] = []
     private var installed = false
     private var filter = VerdictFilter()
+    /// When the first probe that got a reply was sent, from any target since
+    /// the last install. Before it, the link may not have been up yet.
+    private var firstAnsweredAt: Double?
     /// Measurements for history, taken with `takeProbes()`.
     private var probes: [ProbeRecord] = []
 
@@ -71,6 +74,7 @@ struct MonitorCore {
         self.path = path
         records = targets.map { Record(target: $0) }
         installed = true
+        firstAnsweredAt = nil
         filter.reset()
         return events
     }
@@ -81,8 +85,9 @@ struct MonitorCore {
         records[index].status = status
         let sameProtocol = old.measuredProtocol != nil && old.measuredProtocol == status.measuredProtocol
         if old == .warmingUp, status != .warmingUp {
+            if sameProtocol { dropLossesBeforeLinkUp(at: index) }
             // A host that ends up on TCP never logs its warm-up ICMP losses.
-            if sameProtocol { probes += records[index].warmUpProbes }
+            if sameProtocol { probes += records[index].warmUpProbes.map(\.probe) }
             records[index].warmUpProbes.removeAll()
         }
         // The statistics start over unless the target is still measured the same way.
@@ -100,10 +105,11 @@ struct MonitorCore {
         let target = records[index].target
         let probe = ProbeRecord(target: target, probeProtocol: records[index].status.measuredProtocol ?? .icmp, outcome: outcome, sentAt: date(time))
         if records[index].status == .warmingUp {
-            records[index].warmUpProbes.append(probe)
+            records[index].warmUpProbes.append((probe, time))
         } else {
             probes.append(probe)
         }
+        if case .reply = outcome { firstAnsweredAt = min(firstAnsweredAt ?? time, time) }
         var events: [NetworkEvent] = []
         switch outcome {
         case .reply(let rtt):
@@ -169,6 +175,28 @@ struct MonitorCore {
     mutating func takeProbes() -> [ProbeRecord] {
         defer { probes.removeAll() }
         return probes
+    }
+
+    /// After a wake or a network change the first probes often go out before
+    /// the link is up, from every target at once. Losses sent before the first
+    /// probe anything answered are dropped at the end of warm-up, so they don't
+    /// hold a false problem for a minute. If nothing answered, they all stay.
+    private mutating func dropLossesBeforeLinkUp(at index: Int) {
+        guard let cutoff = firstAnsweredAt else { return }
+        let early = { (entry: (probe: ProbeRecord, time: Double)) in
+            if case .lost = entry.probe.outcome { entry.time < cutoff } else { false }
+        }
+        guard records[index].warmUpProbes.contains(where: early) else { return }
+        records[index].warmUpProbes.removeAll(where: early)
+        records[index].stats.dropLosses(sentBefore: cutoff)
+        // A reply resets the outage detector, so only losses after the last one count.
+        // Losses arrive at the timeout, after later replies, so go by send time.
+        let entries = records[index].warmUpProbes.sorted { $0.time < $1.time }
+        let lastReply = entries.last { if case .reply = $0.probe.outcome { true } else { false } }?.time ?? -.infinity
+        records[index].outage = OutageDetector()
+        for entry in entries where entry.time > lastReply {
+            if case .lost = entry.probe.outcome { _ = records[index].outage.record(replied: false, at: entry.time) }
+        }
     }
 
     private func index(of role: TargetRole) -> Int? {

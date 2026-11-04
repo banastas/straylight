@@ -224,6 +224,52 @@ import Testing
         _ = core.record(.reply(milliseconds: 68), for: .internet(0), sentAt: 11)
         #expect(core.takeProbes().map(\.probeProtocol) == [.tcp])
     }
+
+    /// After a wake the link comes up a few seconds in: losses before then
+    /// aren't counted or logged, so the verdict doesn't start on a problem.
+    @Test func lossesBeforeTheLinkIsUpAreDropped() {
+        var core = core()
+        for second in 0..<10 {
+            _ = core.record(second < 3 ? .lost : .reply(milliseconds: 1), for: .router, sentAt: Double(second))
+            _ = core.record(second < 3 ? .lost : .reply(milliseconds: 12), for: .internet(0), sentAt: Double(second))
+        }
+        _ = core.setStatus(.icmp, for: .router, now: 10)
+        _ = core.setStatus(.icmp, for: .internet(0), now: 10)
+        let snapshot = core.tick(now: 10)
+        #expect(snapshot[.router]?.metrics.lost == 0)
+        #expect(snapshot[.internet(0)]?.metrics.lost == 0)
+        #expect(snapshot.verdict == .good)
+        #expect(core.takeProbes().count == 14)
+    }
+
+    /// When nothing answers, the losses are real and stay.
+    @Test func lossesStayWhenNothingAnswers() {
+        var core = core()
+        for second in 0..<10 {
+            _ = core.record(.lost, for: .router, sentAt: Double(second))
+            _ = core.record(.lost, for: .internet(0), sentAt: Double(second))
+        }
+        _ = core.setStatus(.icmp, for: .internet(0), now: 10)
+        let snapshot = core.tick(now: 10)
+        #expect(snapshot[.internet(0)]?.metrics.lost == 10)
+        #expect(snapshot[.internet(0)]?.outageSince == Date(timeIntervalSinceReferenceDate: 0))
+    }
+
+    /// A host that loses everything while the router answers is down from the
+    /// first probe the router answered.
+    @Test func hostLossesCountFromTheFirstAnswer() {
+        var core = core()
+        for second in 0..<10 {
+            _ = core.record(second < 2 ? .lost : .reply(milliseconds: 1), for: .router, sentAt: Double(second))
+            _ = core.record(.lost, for: .internet(0), sentAt: Double(second))
+        }
+        _ = core.setStatus(.icmp, for: .router, now: 10)
+        _ = core.setStatus(.icmp, for: .internet(0), now: 10)
+        let snapshot = core.tick(now: 10)
+        #expect(snapshot[.internet(0)]?.metrics.lost == 8)
+        #expect(snapshot[.internet(0)]?.outageSince == Date(timeIntervalSinceReferenceDate: 2))
+        #expect(snapshot.verdict == .internetDown)
+    }
 }
 
 @Suite struct HistoryInboxTests {

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- After waking from sleep, straylight no longer shows "Local network problem" for about a minute: probes lost before the network came back up no longer count
+
 ## 0.1.1 (2026-10-28)
 
 - The menu bar item is 10 points narrower: with a trace, the verdict mark sits beside the latency instead of in its own column

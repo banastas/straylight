@@ -424,7 +424,22 @@ Not yet checked: real notifications (they need the permission prompt answered), 
 | Jitter vs `ping` | Router 0.11 / 0.13 ms, 1.1.1.1 1.45 / 1.81 ms, 8.8.8.8 1.57 / 1.40 ms: within ± 1 ms |
 | Router | Matched `route -n get default` (M2) |
 
-Still to check by hand: the median after a sleep, loss under Network Link Conditioner, Wi‑Fi ↔ Ethernet and VPN switching, an outage on battery (needs a laptop), and the ICMP block with `pf` (needs `sudo`).
+**M10 hands-on checks (2026-11-04, same Mac, 0.1.1 plus the wake fix below).** Network conditions were made with `pf` rules in the `com.apple/straylight-test` anchor, which the default `/etc/pf.conf` already references, so the system rules stayed as they were.
+
+| Check | Result |
+|---|---|
+| ICMP blocked | Outbound ICMP to 1.1.1.1 and 8.8.8.8 dropped by `pf`, app restarted: both hosts switched to TCP during warm-up and the verdict was Good at 10.4 s. **Pass.** A monitor already running when the block starts shows Internet down instead, as designed: the fallback is only tried during warm-up. |
+| Loss | `dummynet` dropping 5 % of ICMP to both hosts (in place of Network Link Conditioner, which works the same way): straylight 5.3 % and 6.0 % against `ping -c 300` 5.0 % and 4.7 %. **Pass.** |
+| Sleep/wake | **Failed, then fixed.** After a real wake, the verdict was Local network problem for about 65 s: probes sent in the first moments after the wake, before the link was up, were lost, and they counted against the router. Now losses of probes sent before the first probe anything answered are dropped when warm-up ends (if nothing answers, they all stay). Rechecked: "woke from sleep" at 14:39:24, Good at 14:39:35, and the minutes around the wake had no losses and no outage. |
+| Median RTT after sleep/wake | A 60 s `ping` lined up with the 14:43 minute, after that wake: router 0.60 / 0.44 ms, 1.1.1.1 7.00 / 6.98 ms, 8.8.8.8 5.19 / 5.17 ms (straylight's median against `ping`'s average, which is all `-q` prints). **Pass.** Two `ping` runs to the same host at the same time differ by up to 0.9 ms, probably because each flow is hashed onto its own path, so a single run is a noisy reference. That accounts for the 1.1.1.1 gap in M1. |
+| Network change | Not done by hand: the Ethernet cable couldn't be unplugged, and the VPN was skipped. Dark wakes did switch the path twice (en7 to en1 and back, 09:50 and 14:37): both times the targets were re-resolved and the verdict was Good about 10 s after the last change, with no false outage. **Partial pass.** VPN switching is still to check. |
+| Outage on battery | `STRAYLIGHT_ON_BATTERY=1` (5 s interval, 12 probes a minute) on this desktop, and a `pf` rule dropping everything to both hosts while the router still answered. Block at 14:55:53, cleared at 14:58:00; outage logged from 14:55:55.6 to 14:58:01.6 for both hosts, each end within one interval. Internet down at 14:56:13.9; the 20 s is fast recheck, the 5 s outage minimum and the 10 s verdict hold. No switch to TCP. Notifications "Internet down: No reply from 1.1.1.1 and 8.8.8.8 since 14:55" and "Internet back: It was down for 2m 6s". The verdict then read Internet problem for 80 s while the lost probes were in the 100 s window, then Good. **Pass**, with a real WAN unplug and a real battery still untested. |
+| Notifications | Real alerts after answering the permission prompt, above. Closes the M7 item. |
+| Low Power Mode | Interval went to 5 s with the reason given, and back to 1 s when it was turned off. **Pass.** |
+| Screen lock | A week of history has 5,216 locked minutes; the log shows "stopped: locked" and a warm-up on each unlock. **Pass.** |
+| A week running | 6.5 days of history: memory steady at about 23 MB, CPU about 0.2 % on average. Of 58 router minutes with 2 or more losses, only 4 were near a sleep or lock. |
+
+Before the fix, going to sleep cost 2 probes per target in the minute it happened (09:50); the 14:36 sleep cost none. Still to check by hand: VPN switching, a real WAN unplug, and energy on a real battery (this Mac has none).
 
 ## 10. Accessibility and localization
 

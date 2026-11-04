@@ -179,7 +179,7 @@ final class AppModel {
 
     private func updateInterval() {
         guard let monitor, interval != monitorInterval else { return }
-        log.notice("interval \(self.interval, privacy: .public) s\(self.slowRateReason.map { " (\($0))" } ?? "", privacy: .public)")
+        log.notice("interval \(self.interval, format: .fixed(precision: 0), privacy: .public) s\(self.slowRateReason.map { " (\($0))" } ?? "", privacy: .public)")
         monitorInterval = interval
         monitor.update(interval: interval)
     }
@@ -314,6 +314,9 @@ final class AppModel {
             offlineSince = nil
         } else if offlineSince == nil {
             offlineSince = now
+        }
+        if snapshot.verdict != self.snapshot.verdict {
+            log.notice("verdict \(snapshot.verdict.rawValue, privacy: .public)")
         }
         self.snapshot = snapshot
         // A Low Data or expensive path probes at the battery interval.
