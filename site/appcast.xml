@@ -3,6 +3,24 @@
     <channel>
         <title>straylight</title>
         <item>
+            <title>1.0.0</title>
+            <pubDate>Wed, 04 Nov 2026 15:18:28 -0800</pubDate>
+            <link>https://straylight.banast.as</link>
+            <sparkle:version>3</sparkle:version>
+            <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>27.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<p>The first stable release, checked on real hardware against ping, blocked ICMP, packet loss, sleep and a simulated outage.</p>
+<ul>
+  <li>After waking from sleep, straylight no longer shows "Local network problem" for about a minute: probes lost before the network came back up no longer count</li>
+</ul>
+]]></description>
+            <enclosure url="https://straylight.banast.as/releases/straylight-1.0.0.dmg" length="3762666" type="application/octet-stream" sparkle:edSignature="UwzMl4+kXmMmC+nUkR20VwSbvmD3d7QtlysMij9K7G6toNjePOJDwVPftbV5/9s1bQaYELmf/H6b6uNQlQbVDw=="/>
+            <sparkle:deltas>
+                <enclosure url="https://straylight.banast.as/releases/straylight3-2.delta" sparkle:deltaFrom="2" length="98210" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976464" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="X6xK4XCO16YlUjwhQxi9DyCpAj2Zdrjm8Q7cn8LHdvgDKA/WYRcvajWffSxxaOp9FOtOWmwVSTw85NKZElxIBQ=="/>
+                <enclosure url="https://straylight.banast.as/releases/straylight3-1.delta" sparkle:deltaFrom="1" length="111814" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976464" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="WHSatapf229pv6kyvGgh1XxkGcHokH4WOlYOdnen0kUlgQdsaxVjZ7lqRnEPy6a4eBqkP70YAn8jfbhDH/jHCg=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>0.1.1</title>
             <pubDate>Wed, 28 Oct 2026 19:10:49 -0700</pubDate>
             <link>https://straylight.banast.as</link>

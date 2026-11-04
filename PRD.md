@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Status** | Draft v0.2: not started |
+| **Status** | 1.0 released 2026-11-04 |
 | **Owner** | Bill Anastas |
-| **Last updated** | 2026-10-26 |
+| **Last updated** | 2026-11-04 |
 | **Repo** | [banastas/straylight](https://github.com/banastas/straylight) |
 | **Site / updates** | https://straylight.banast.as |
 | **Siblings** | [flatline](https://github.com/banastas/flatline) (CPU, memory, network), freeside (drives) |
@@ -485,4 +485,4 @@ Before the fix, going to sleep cost 2 probes per target in the minute it happene
 3. **DNS timing**: is resolver latency worth tracking? Caching makes it hard to measure honestly.
 4. **On-demand capacity test**: a button that runs macOS's `networkQuality` and shows the result? It saturates the link for about 20 s, so on demand only.
 5. **Flatline integration**: should flatline's network card show straylight's verdict when both are running, or should the apps stay fully separate?
-6. **Repo visibility**: private until 1.0, or public from the start?
+6. ~~**Repo visibility**: private until 1.0, or public from the start?~~ Decided: public from 1.0.

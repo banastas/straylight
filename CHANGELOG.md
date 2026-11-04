@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.0.0 (2026-11-04)
+
+The first stable release, checked on real hardware against ping, blocked ICMP, packet loss, sleep and a simulated outage.
 
 - After waking from sleep, straylight no longer shows "Local network problem" for about a minute: probes lost before the network came back up no longer count
 
