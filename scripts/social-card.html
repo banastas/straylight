@@ -1,0 +1,117 @@
+<!doctype html>
+<!--
+  GitHub social preview for the repo and the site's og:image (1280×640), in
+  flatline's style. GitHub crops up to 40pt (80px here) from each edge, so
+  everything that matters sits inside .safe.
+
+  Render to site/social.png with any Chromium browser:
+    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" --headless \
+      --hide-scrollbars --force-device-scale-factor=1 --window-size=1280,640 \
+      --screenshot=site/social.png scripts/social-card.html
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>straylight social card</title>
+<style>
+  :root {
+    --bg: #07090a;
+    --text: #d9e4de;
+    --dim: #82948d;
+    --faint: #56665f;
+    --phosphor: #33f273;
+    --loss: #ff6b5e;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    position: relative;
+    background:
+      radial-gradient(700px 460px at 82% 45%, rgb(51 242 115 / 0.13), transparent 70%),
+      radial-gradient(900px 500px at 10% 110%, rgb(51 242 115 / 0.06), transparent 70%),
+      var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* The icon's grid, faded toward the edges */
+  .grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgb(51 242 115 / 0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(51 242 115 / 0.07) 1px, transparent 1px);
+    background-size: 80px 80px;
+    background-position: -1px -1px;
+    mask-image: radial-gradient(1000px 560px at 50% 50%, #000 30%, transparent 85%);
+  }
+
+  .safe {
+    position: absolute; inset: 80px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 64px;
+    align-items: center;
+  }
+
+  .brand { display: flex; align-items: center; gap: 18px; margin-bottom: 34px; }
+  .brand img { width: 68px; height: 68px; display: block; }
+  .brand span { font-size: 40px; font-weight: 600; color: #fff; letter-spacing: -0.01em; }
+
+  h1 {
+    margin: 0;
+    font-size: 54px;
+    line-height: 1.08;
+    letter-spacing: -0.025em;
+    color: #fff;
+  }
+  .lede { margin: 22px 0 0; font-size: 22px; line-height: 1.45; color: var(--dim); }
+
+  /* An RTT trace that drops flat while probes are lost, then recovers */
+  .trace { display: block; width: 100%; height: 72px; margin: 26px 0 18px; overflow: visible; }
+  .trace path {
+    fill: none; stroke: var(--phosphor); stroke-width: 3.5;
+    stroke-linejoin: round; stroke-linecap: round;
+    filter: drop-shadow(0 0 6px rgb(51 242 115 / 0.65));
+  }
+  .trace .lost { stroke: var(--loss); stroke-width: 3; filter: drop-shadow(0 0 5px rgb(255 107 94 / 0.6)); }
+  .trace rect { fill: var(--phosphor); filter: drop-shadow(0 0 6px rgb(51 242 115 / 0.65)); }
+
+  .meta { font-size: 18px; color: var(--faint); }
+  .meta b { color: var(--phosphor); font-weight: 500; }
+
+  /* The top of the popover: verdict, router and internet */
+  .shot {
+    width: 340px; height: 394px;
+    border-radius: 14px; overflow: hidden;
+    border: 1px solid #3a3d3c;
+    background: #2e2e2e;
+    box-shadow: 0 18px 40px rgb(0 0 0 / 0.6);
+  }
+  .shot img { display: block; width: 340px; }
+</style>
+</head>
+<body>
+  <div class="grid"></div>
+  <div class="safe">
+    <div>
+      <div class="brand">
+        <img src="../site/icon.png" alt="">
+        <span>straylight</span>
+      </div>
+      <h1>Is it the Wi‑Fi,<br>or the internet?</h1>
+      <p class="lede">Latency, jitter and packet loss to your<br>router and the internet, side by side.</p>
+      <svg class="trace" viewBox="0 0 690 72" preserveAspectRatio="xMinYMid meet" aria-hidden="true">
+        <path d="M2 30 L24 26 L46 32 L68 24 L90 29 L112 22 L134 31 L156 27 L178 33 L200 25 L222 30 L244 66 H360 L382 28 L404 32 L426 24 L448 30 L470 26 L492 31 L514 23 L536 29 L558 27 L580 32 L602 25 L624 29 L650 27"/>
+        <path class="lost" d="M262 66 v-10 M286 66 v-10 M310 66 v-10 M334 66 v-10"/>
+        <rect x="664" y="12" width="12" height="36" rx="2"/>
+      </svg>
+      <p class="meta"><b>$</b> open https://straylight.banast.as</p>
+    </div>
+    <div class="shot">
+      <img src="../site/screenshots/popover.png" alt="">
+    </div>
+  </div>
+</body>
+</html>
