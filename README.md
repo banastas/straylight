@@ -1,6 +1,6 @@
 # straylight
 
-A small menu bar app for Apple Silicon Macs that shows how good your connection is: **latency**, **jitter**, and **packet loss**, to your router and to the internet, side by side.
+straylight shows how good your connection is from the menu bar: **latency**, **jitter**, and **packet loss**, to your router and to the internet, side by side. For Apple Silicon Macs.
 
 > Is it the Wi‑Fi, or the internet? straylight answers that at a glance.
 
