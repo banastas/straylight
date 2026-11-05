@@ -72,10 +72,12 @@ struct SettingsView: View {
             SettingsSection(title: String(localized: "NOTIFICATIONS")) {
                 Toggle(String(localized: "internet outages"), isOn: $preferences.notifyOutages)
                 Toggle(String(localized: "verdict changes"), isOn: $preferences.notifyVerdictChanges)
+                Toggle(String(localized: "sound"), isOn: $preferences.notificationSound)
+                    .disabled(!preferences.notifyOutages)
                 if model.notificationsDenied {
                     Hint(text: String(localized: "Notifications are turned off for straylight in System Settings."), color: .orange)
                 } else {
-                    Hint(text: String(localized: "Outages after 10 seconds and when they end; verdicts that hold for 30 seconds."))
+                    Hint(text: String(localized: "Outages after 10 seconds and when they end; verdicts that hold for 30 seconds. Only the outage alert can play a sound."))
                 }
             }
             SettingsSection(title: String(localized: "GENERAL")) {

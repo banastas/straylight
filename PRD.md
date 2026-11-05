@@ -194,6 +194,7 @@ Both are off by default. Details settled in M7:
 - The outage alert fires when every internet host that counts is Down, timed from when the last one went down. It names the hosts and adds when the router isn't answering either. "Internet back" gives how long it was down. Warm-up after a network change doesn't end an outage; the next measured state does.
 - The verdict that first holds after launch is the starting point and isn't posted. Measuring in between (a network change) isn't a change. While an outage alert stands, the down verdict isn't posted as well, and nor is the return to Good after "Internet back".
 - Pausing or locking forgets an outage in progress without an "Internet back".
+- Only the outage alert plays a sound, and the "sound" setting turns it off. "Internet back" and verdict changes are silent.
 - Permission is asked when a notification setting is first turned on. If it's refused, both settings turn off and the panel says notifications are off in System Settings. Clicking a notification opens the popover.
 
 ### 6.10 Settings
@@ -212,6 +213,7 @@ Shown in the popover (an inline settings panel, as in flatline), stored in `User
 | Keep monitoring while locked | on / off | off |
 | History retention | 7, 30, 90 days (per-minute detail is kept for 7) | 30 days |
 | Notifications | Outages, Verdict changes | off |
+| Notification sound | on / off, for the outage alert | on |
 | Accent color | phosphor green, cyan, magenta, amber, system | phosphor green |
 | Launch at login | on / off (`SMAppService.mainApp`) | off, with a prompt on first run |
 | Automatic updates | check automatically / download automatically | check automatically, daily |

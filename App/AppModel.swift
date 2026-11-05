@@ -322,7 +322,7 @@ final class AppModel {
         // A Low Data or expensive path probes at the battery interval.
         updateInterval()
         for alert in alerts.update(snapshot, now: now) {
-            notifier.post(alert, snapshot: snapshot)
+            notifier.post(alert, snapshot: snapshot, sound: preferences.notificationSound)
         }
         readWiFiIfDue()
         onChange?()

@@ -57,6 +57,8 @@ final class Preferences {
     var retentionDays: Int { didSet { save(retentionDays, "retentionDays") } }
     var notifyOutages: Bool { didSet { save(notifyOutages, "notifyOutages") } }
     var notifyVerdictChanges: Bool { didSet { save(notifyVerdictChanges, "notifyVerdictChanges") } }
+    /// The outage alert plays the system notification sound.
+    var notificationSound: Bool { didSet { save(notificationSound, "notificationSound") } }
     var accent: Accent { didSet { save(accent.rawValue, "accent") } }
     /// The first-run note has been shown (PRD §6.8).
     var didShowFirstRun: Bool { didSet { save(didShowFirstRun, "didShowFirstRun") } }
@@ -67,7 +69,7 @@ final class Preferences {
         self.defaults = defaults
         defaults.register(defaults: [
             "interval": 1.0, "batteryInterval": 5.0, "primaryHost": "1.1.1.1", "secondaryHost": "8.8.8.8",
-            "probeIPv6": true, "retentionDays": 30,
+            "probeIPv6": true, "retentionDays": 30, "notificationSound": true,
         ])
         displayStyle = Self.load(defaults, "displayStyle", .textAndTrace)
         menuBarTarget = Self.load(defaults, "menuBarTarget", .internet)
@@ -81,6 +83,7 @@ final class Preferences {
         retentionDays = defaults.integer(forKey: "retentionDays")
         notifyOutages = defaults.bool(forKey: "notifyOutages")
         notifyVerdictChanges = defaults.bool(forKey: "notifyVerdictChanges")
+        notificationSound = defaults.bool(forKey: "notificationSound")
         accent = Self.load(defaults, "accent", .phosphor)
         didShowFirstRun = defaults.bool(forKey: "didShowFirstRun")
     }

@@ -3,6 +3,24 @@
     <channel>
         <title>straylight</title>
         <item>
+            <title>1.0.1</title>
+            <pubDate>Wed, 04 Nov 2026 18:29:42 -0800</pubDate>
+            <link>https://straylight.banast.as</link>
+            <sparkle:version>4</sparkle:version>
+            <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>27.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<ul>
+  <li>A "sound" setting under Notifications turns off the sound of the outage alert</li>
+</ul>
+]]></description>
+            <enclosure url="https://straylight.banast.as/releases/straylight-1.0.1.dmg" length="3763614" type="application/octet-stream" sparkle:edSignature="iXY6b4+d1+d2g6HIp+Zy1Fbiq9tX96zph/up6ZPQVg8Rf5Ku8d+eMC1CXYR4YaP9Z1BK2dbMnlxgl6/Zge3iAg=="/>
+            <sparkle:deltas>
+                <enclosure url="https://straylight.banast.as/releases/straylight4-3.delta" sparkle:deltaFrom="3" length="65678" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976464" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="y56pBwTf2de4/JLeRVlq4a2wWlwb1NVQRSTWlfFFZqzW0f4PjwqMmtQSYEGc89IdFcfMmku2sPiJ+Jj2zfemAQ=="/>
+                <enclosure url="https://straylight.banast.as/releases/straylight4-2.delta" sparkle:deltaFrom="2" length="105002" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976464" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="dxlDgJgTKHJPyQO8MBf62q69cHMyylNM9FqmqUGrrECVNnBf073E2NU+EHaFjnVCJJEQf1CpBqU/rUBWUnY3CA=="/>
+                <enclosure url="https://straylight.banast.as/releases/straylight4-1.delta" sparkle:deltaFrom="1" length="117614" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976464" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="QhQf8bq5hbJ0KnDxORxzeWzUcMCjQ4qn+PhznJ5qg/xJ07x18CESvBIdZ7vWoL5ABrFmT3dVCReziM4MrU6+Cw=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>1.0.0</title>
             <pubDate>Wed, 04 Nov 2026 15:18:28 -0800</pubDate>
             <link>https://straylight.banast.as</link>
@@ -37,28 +55,6 @@
             <sparkle:deltas>
                 <enclosure url="https://straylight.banast.as/releases/straylight2-1.delta" sparkle:deltaFrom="1" length="81486" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976464" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="3pqVb2nkd7R6Zpyky1olC2RMIsGLJlz28NeGnMEN9Kr+4ze5j0lgVcIdZRoY+lZD6uRm0oiD3fLV2AjEF8WCAQ=="/>
             </sparkle:deltas>
-        </item>
-        <item>
-            <title>0.1.0</title>
-            <pubDate>Wed, 28 Oct 2026 15:53:12 -0700</pubDate>
-            <link>https://straylight.banast.as</link>
-            <sparkle:version>1</sparkle:version>
-            <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>27.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<p>The first release.</p>
-<ul>
-  <li>Router and internet measured side by side, with a plain verdict: Good, Internet problem, Internet down, Local network problem or Offline</li>
-  <li>Two internet hosts from different providers, plus IPv6 on dual-stack networks, with a TCP fallback for hosts that block ping</li>
-  <li>Latency now, median and p95, jitter and loss per target, with a 60-second trace</li>
-  <li>History: per-minute stats for 7 days, hourly for up to 90, minute states for sleep, lock and pauses, and CSV export of measurements and outages</li>
-  <li>Wi‑Fi signal, noise and transmit rate next to the measurements</li>
-  <li>Fixed-width menu bar with text, a trace or both; pause for an hour from the right-click menu</li>
-  <li>Probes every 5 seconds on battery, in Low Power Mode and on Low Data or hotspot networks; stops while the screen is locked</li>
-  <li>Optional notifications for outages and verdict changes</li>
-  <li>Copy diagnostics for bug reports; no telemetry</li>
-</ul>
-]]></description>
-            <enclosure url="https://straylight.banast.as/releases/straylight-0.1.0.dmg" length="3750398" type="application/octet-stream" sparkle:edSignature="YgM0i1Pb2Q3GkXFNZF8fXbOj6w4xtitwReLY3NYAnjmR8uB49pIB9Y4UMd7Kw166bdG9941PV1cQM7pfMsNPCg=="/>
         </item>
     </channel>
 </rss>

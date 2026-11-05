@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1 (2026-11-04)
+
+- A "sound" setting under Notifications turns off the sound of the outage alert
+
 ## 1.0.0 (2026-11-04)
 
 The first stable release, checked on real hardware against ping, blocked ICMP, packet loss, sleep and a simulated outage.

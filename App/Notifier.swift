@@ -21,7 +21,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
     }
 
-    func post(_ alert: AlertTracker.Alert, snapshot: MonitorSnapshot) {
+    /// - Parameter sound: whether the outage alert plays a sound. The others never do.
+    func post(_ alert: AlertTracker.Alert, snapshot: MonitorSnapshot, sound: Bool) {
         let content = UNMutableNotificationContent()
         switch alert {
         case .internetDown(let since, let hosts, let verdict):
@@ -30,7 +31,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             var body = String(localized: "No reply from \(names) since \(PopoverFormat.time(since)).")
             if verdict == .localDown { body += " " + String(localized: "The router isn't answering either.") }
             content.body = body
-            content.sound = .default
+            if sound { content.sound = .default }
         case .internetBack(let after):
             content.title = String(localized: "Internet back")
             content.body = String(localized: "It was down for \(PopoverFormat.duration(after)).")
