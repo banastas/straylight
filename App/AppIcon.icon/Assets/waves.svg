@@ -1,8 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <circle cx="330" cy="512" r="72" fill="#33F273"/>
-  <g fill="none" stroke="#33F273" stroke-width="64" stroke-linecap="round">
-    <path d="M483 383 A200 200 0 0 1 483 641"/>
-    <path d="M583 300 A330 330 0 0 1 583 724"/>
-    <path d="M682 216 A460 460 0 0 1 682 808" opacity="0.5"/>
-  </g>
+  <!-- A source and its waves; the source is lit, the outer wave dimmed.
+       One slice (y 600-632) is knocked 34 px to the right. -->
+  <defs><clipPath id="band"><rect x="-200" y="600" width="1424" height="32"/></clipPath><clipPath id="outside"><path d="M-200 -200 H1224 V600 H-200 Z M-200 632 H1224 V1224 H-200 Z"/></clipPath><linearGradient id="paper" gradientUnits="userSpaceOnUse" x1="0" y1="200" x2="0" y2="824"><stop offset="0" stop-color="#FBFAF6"/><stop offset="1" stop-color="#E4E2DC"/></linearGradient></defs>
+  <g clip-path="url(#outside)"><g fill="none" stroke="url(#paper)" stroke-width="64" stroke-linecap="round"><path d="M483 383 A200 200 0 0 1 483 641"/><path d="M583 300 A330 330 0 0 1 583 724"/></g><path d="M682 216 A460 460 0 0 1 682 808" fill="none" stroke="#5C5C5E" stroke-width="64" stroke-linecap="round"/><circle cx="330" cy="512" r="72" fill="#00EDFF"/></g><g clip-path="url(#band)" transform="translate(34 0)"><g fill="none" stroke="url(#paper)" stroke-width="64" stroke-linecap="round"><path d="M483 383 A200 200 0 0 1 483 641"/><path d="M583 300 A330 330 0 0 1 583 724"/></g><path d="M682 216 A460 460 0 0 1 682 808" fill="none" stroke="#5C5C5E" stroke-width="64" stroke-linecap="round"/><circle cx="330" cy="512" r="72" fill="#00EDFF"/></g>
 </svg>

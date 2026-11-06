@@ -1,12 +1,12 @@
 {
   "fill" : {
-    "automatic-gradient" : "extended-srgb:0.03000,0.07000,0.05000,1.00000"
+    "solid" : "extended-srgb:0.03137,0.03137,0.03922,1.00000"
   },
   "groups" : [
     {
       "layers" : [
         {
-          "glass" : true,
+          "glass" : false,
           "image-name" : "waves.svg",
           "name" : "waves"
         }
@@ -14,20 +14,37 @@
       "shadow" : {
         "kind" : "neutral",
         "opacity" : 0.5
-      },
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.3
       }
     },
     {
       "layers" : [
         {
           "glass" : false,
-          "image-name" : "grid.svg",
-          "name" : "grid"
+          "hidden-specializations" : [
+            {
+              "appearance" : "tinted",
+              "value" : true
+            }
+          ],
+          "image-name" : "glitch.svg",
+          "name" : "glitch"
+        },
+        {
+          "glass" : false,
+          "hidden-specializations" : [
+            {
+              "appearance" : "tinted",
+              "value" : true
+            }
+          ],
+          "image-name" : "ground.svg",
+          "name" : "ground"
         }
-      ]
+      ],
+      "shadow" : {
+        "kind" : "none",
+        "opacity" : 0
+      }
     }
   ],
   "supported-platforms" : {
