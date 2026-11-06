@@ -3,6 +3,25 @@
     <channel>
         <title>straylight</title>
         <item>
+            <title>1.0.2</title>
+            <pubDate>Thu, 05 Nov 2026 22:16:27 -0800</pubDate>
+            <link>https://straylight.banast.as</link>
+            <sparkle:version>5</sparkle:version>
+            <sparkle:shortVersionString>1.0.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>27.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<ul>
+  <li>A new app icon, in the look it now shares with the other banast.as apps</li>
+</ul>
+]]></description>
+            <enclosure url="https://straylight.banast.as/releases/straylight-1.0.2.dmg" length="3979925" type="application/octet-stream" sparkle:edSignature="9kkQTeG9e9FamJIWoscnEUgHUS3PVWAYsiFKzZcT2k9F40KBWaZ5IvfbRIukc6DBnc6olV1Lr3U+fgGTbqDYBA=="/>
+            <sparkle:deltas>
+                <enclosure url="https://straylight.banast.as/releases/straylight5-4.delta" sparkle:deltaFrom="4" length="2251110" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976464" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="xK6d0cKfar3cO4H6VlMBRpIqGDvKjgLOILBOGs/kk8VljfxgVIYokmTGiRIXlfCCuy1YQPa+30C5gZrxVr+QCw=="/>
+                <enclosure url="https://straylight.banast.as/releases/straylight5-3.delta" sparkle:deltaFrom="3" length="2301510" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976464" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="LN3FcoswpHMYLGIoic4sHhiqbWylKZCHXZFlv+/FZUsltYJpJFl7EtjEuu/uS6wEt+Pd27HxNmIfXnRKHpAyBQ=="/>
+                <enclosure url="https://straylight.banast.as/releases/straylight5-2.delta" sparkle:deltaFrom="2" length="2343306" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976464" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="nF0KWzKz5IanqJ/rB69PqwZrEAsdptSiVK+FIHVoUo2Se00TdcveAZrr00oLcbKdn/PwAt1Z0c6Qm9RosjLcAg=="/>
+                <enclosure url="https://straylight.banast.as/releases/straylight5-1.delta" sparkle:deltaFrom="1" length="2356246" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976464" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="p9wtBAFQOorzDq8aeGdICoUgis2MaocQhocxK2RXGA0bPEvfTNcdU1PfPP3lJ53WizSUK9ucslj/p9guvnIjDQ=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>1.0.1</title>
             <pubDate>Wed, 04 Nov 2026 18:29:42 -0800</pubDate>
             <link>https://straylight.banast.as</link>
@@ -36,24 +55,6 @@
             <sparkle:deltas>
                 <enclosure url="https://straylight.banast.as/releases/straylight3-2.delta" sparkle:deltaFrom="2" length="98210" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976464" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="X6xK4XCO16YlUjwhQxi9DyCpAj2Zdrjm8Q7cn8LHdvgDKA/WYRcvajWffSxxaOp9FOtOWmwVSTw85NKZElxIBQ=="/>
                 <enclosure url="https://straylight.banast.as/releases/straylight3-1.delta" sparkle:deltaFrom="1" length="111814" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976464" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="WHSatapf229pv6kyvGgh1XxkGcHokH4WOlYOdnen0kUlgQdsaxVjZ7lqRnEPy6a4eBqkP70YAn8jfbhDH/jHCg=="/>
-            </sparkle:deltas>
-        </item>
-        <item>
-            <title>0.1.1</title>
-            <pubDate>Wed, 28 Oct 2026 19:10:49 -0700</pubDate>
-            <link>https://straylight.banast.as</link>
-            <sparkle:version>2</sparkle:version>
-            <sparkle:shortVersionString>0.1.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>27.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<ul>
-  <li>The menu bar item is 10 points narrower: with a trace, the verdict mark sits beside the latency instead of in its own column</li>
-  <li>The popover reopens in about 25 ms instead of 75: it's kept for a minute after closing</li>
-  <li>The popover opens at its full height instead of growing on its first frame</li>
-</ul>
-]]></description>
-            <enclosure url="https://straylight.banast.as/releases/straylight-0.1.1.dmg" length="3754970" type="application/octet-stream" sparkle:edSignature="4BsN9Rhj3oqke27uohCWdkOXyIE1s3pvcdWS8enzs5cDJMse3AB7zZ2bFH9hWrYRs3drXzpnp6FEwXQD5SXLCg=="/>
-            <sparkle:deltas>
-                <enclosure url="https://straylight.banast.as/releases/straylight2-1.delta" sparkle:deltaFrom="1" length="81486" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976464" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="3pqVb2nkd7R6Zpyky1olC2RMIsGLJlz28NeGnMEN9Kr+4ze5j0lgVcIdZRoY+lZD6uRm0oiD3fLV2AjEF8WCAQ=="/>
             </sparkle:deltas>
         </item>
     </channel>
